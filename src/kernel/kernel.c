@@ -1,82 +1,126 @@
 /*
  * T-OS Minimal Kernel
- * Freestanding C Environment - Cursor Logo Display
+ * Freestanding C Environment - TUI Implementation
  */
 
-#define VIDEO_MEMORY 0xb8000
-#define COLS 80
-#define ROWS 25
-#define BYTES_PER_CELL 2
-#define ROW_SIZE (COLS * BYTES_PER_CELL)
+#include "screen.h"
+#include "utils.h"
 
-#define WHITE_ON_BLACK 0x0f
-#define BRIGHT_WHITE 0x0f
-#define LIGHT_CYAN 0x0b
+/* Attribute Byte: (Background << 4) | Foreground
+ * 0: Black, 1: Blue, 2: Green, 3: Cyan, 4: Red, 5: Magenta, 6: Brown, 7: Light Grey
+ * 8: Dark Grey, 9: Light Blue, A: Light Green, B: Light Cyan, C: Light Red, D: Light Magenta, E: Yellow, F: White
+ */
+#define COLOR_BG        0x0F // White on Black
+#define COLOR_BAR       0x1F // White on Blue
+#define COLOR_WIN_BG    0x0F // White on Black
+#define COLOR_WIN_BORDER 0x07 // Light Grey on Black
+#define COLOR_SHADOW    0x08 // Dark Grey on Black (Text) - used with block char, or use 0x70 for background shadow
 
-/* VGA block characters */
-#define BLOCK_FULL  0xDB
-#define BLOCK_UPPER 0xDC
-#define BLOCK_LOWER 0xDF
-
-void clear_screen(void);
-void put_char_at(int row, int col, char c, unsigned char attr);
-void print_at(int row, int col, const char* msg);
-void draw_cursor_logo(void);
+void draw_desktop();
+void draw_top_bar();
+void draw_bottom_bar();
+void draw_window(int x, int y, int w, int h, const char* title, const char* content);
 
 void kernel_main(void) {
     clear_screen();
-    draw_cursor_logo();
-    print_at(14, 33, "T-OS");
-    print_at(16, 28, "Powered by Cursor");
+    draw_desktop();
+
+    // Position cursor for input (simulated)
+    // kprint_at("> ", 2, 22);
 
     while (1)
         ;
 }
 
-void clear_screen(void) {
-    unsigned char* vid = (unsigned char*) VIDEO_MEMORY;
-    for (int i = 0; i < COLS * ROWS * BYTES_PER_CELL; i += 2) {
-        vid[i] = ' ';
-        vid[i + 1] = WHITE_ON_BLACK;
+void draw_desktop() {
+    // 2. Top Bar (Fedora Style)
+    draw_top_bar();
+
+    // 3. Bottom Taskbar (Windows Hybrid)
+    draw_bottom_bar();
+
+    // 4. Windows
+    // Window 1: C Code Editor
+    draw_window(3, 3, 38, 14, " kernel.c ",
+        "void main() {\n"
+        "  // T-OS Kernel\n"
+        "  init_video();\n"
+        "  kprint(\"Hello\");\n"
+        "  while(1);\n"
+        "}");
+
+    // Window 2: Terminal
+    draw_window(44, 6, 32, 11, " Terminal ",
+        "$ make\n"
+        "[OK] Kernel built.\n"
+        "[OK] Bootloader.\n"
+        "$ ./run\n"
+        "Starting T-OS..."
+    );
+}
+
+void draw_top_bar() {
+    // Background
+    draw_rect(0, 0, 80, 1, COLOR_BAR);
+
+    // Text
+    kprint_at_attr(" Activities ", 0, 0, COLOR_BAR); // Left
+
+    // Center Clock (Mock)
+    kprint_at_attr(" 12:00 ", 37, 0, COLOR_BAR);
+
+    // Right Icons
+    kprint_at_attr(" WF BT PW ", 70, 0, COLOR_BAR);
+}
+
+void draw_bottom_bar() {
+    // Background
+    draw_rect(0, 24, 80, 1, COLOR_BAR);
+
+    // Start Button (Stylized T)
+    kprint_at_attr(" [T] ", 0, 24, COLOR_BAR);
+
+    // Center Icons (Mock)
+    kprint_at_attr(" [Code] [Term] [File] ", 30, 24, COLOR_BAR);
+
+    // Show Desktop sliver
+    kprint_at_attr("||", 78, 24, COLOR_BAR);
+}
+
+void draw_window(int x, int y, int w, int h, const char* title, const char* content) {
+    // Shadow (Right and Bottom)
+    // Using 0x07 (Light Grey) char on Black for simplicity, or 0x08 (Dark Grey)
+    // Actually, screen.c draw_rect prints spaces with attribute.
+    // If we want a shadow effect, we can use attribute 0x08 (Dark Grey foreground, Black background)
+    // But spaces are empty.
+    // Let's use attribute 0x70 (Black foreground, Light Grey background) -> Solid Light Grey block
+    // Or 0x80 (Black on Dark Grey) -> but bit 7 is blink.
+    // Let's stick to 0x08 (Dark Grey on Black) and assume we can't do block shadow easily without changing draw_rect to accept char.
+    // I'll skip shadow for now to keep it clean.
+
+    // Window Box
+    draw_box(x, y, w, h, COLOR_WIN_BORDER, COLOR_WIN_BG);
+
+    // Title
+    kprint_at((char*)title, x + 2, y);
+
+    // Content
+    int cx = x + 2;
+    int cy = y + 2;
+
+    const char* p = content;
+    while(*p) {
+        if(*p == '\n') {
+            cy++;
+            cx = x + 2;
+        } else {
+            char str[2] = {*p, 0};
+            // Ensure we don't overflow window
+            if (cx < x + w - 1 && cy < y + h - 1) {
+                kprint_at(str, cx, cy);
+            }
+            cx++;
+        }
+        p++;
     }
-}
-
-void put_char_at(int row, int col, char c, unsigned char attr) {
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS)
-        return;
-    unsigned char* vid = (unsigned char*) VIDEO_MEMORY;
-    int offset = (row * ROW_SIZE) + (col * BYTES_PER_CELL);
-    vid[offset] = c;
-    vid[offset + 1] = attr;
-}
-
-void print_at(int row, int col, const char* msg) {
-    while (*msg) {
-        put_char_at(row, col, *msg, WHITE_ON_BLACK);
-        msg++;
-        col++;
-    }
-}
-
-/* Cursor IDE-style logo: vertical bar with arrow (7x7) */
-void draw_cursor_logo(void) {
-    const unsigned char attr = LIGHT_CYAN;
-    int start_row = 6;
-    int start_col = 36;
-
-    /* Top cap */
-    put_char_at(start_row + 0, start_col + 3, BLOCK_UPPER, attr);
-
-    /* Vertical bar */
-    put_char_at(start_row + 1, start_col + 3, BLOCK_FULL, attr);
-    put_char_at(start_row + 2, start_col + 3, BLOCK_FULL, attr);
-    put_char_at(start_row + 3, start_col + 3, BLOCK_FULL, attr);
-    put_char_at(start_row + 4, start_col + 3, BLOCK_FULL, attr);
-
-    /* Arrow head (bottom) */
-    put_char_at(start_row + 5, start_col + 1, BLOCK_LOWER, attr);
-    put_char_at(start_row + 5, start_col + 2, BLOCK_LOWER, attr);
-    put_char_at(start_row + 5, start_col + 3, BLOCK_LOWER, attr);
-    put_char_at(start_row + 5, start_col + 4, BLOCK_LOWER, attr);
-    put_char_at(start_row + 5, start_col + 5, BLOCK_LOWER, attr);
 }
