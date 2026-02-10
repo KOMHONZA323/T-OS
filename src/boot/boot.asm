@@ -31,8 +31,10 @@ load_kernel:
     mov bx, MSG_LOAD_KERNEL
     call print_string
 
+    xor ax, ax
+    mov es, ax           ; ES must be 0 for int 0x13 buffer (ES:BX = 0:0x1000)
     mov bx, KERNEL_OFFSET
-    mov dh, 15           ; Load the first 15 sectors (excluding boot sector) from the boot disk (approx 7.5KB)
+    mov dh, 32           ; Load 32 sectors (16KB) - ensures kernel fits
     mov dl, [BOOT_DRIVE]
     call disk_load
 

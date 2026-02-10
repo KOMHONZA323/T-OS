@@ -53,9 +53,29 @@ add_custom_target(t_os ALL
     COMMENT "Creating T-OS Disk Image"
 )
 
-# 6. Run Target
+# 6. Create Bootable ISO (El Torito floppy emulation)
+set(ISO_IMAGE "${BUILD_DIR}/t-os.iso")
+add_custom_target(iso ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${BUILD_DIR}/iso
+    COMMAND ${CMAKE_COMMAND} -E copy ${OS_IMAGE} ${BUILD_DIR}/iso/
+    COMMAND genisoimage -quiet -V "T-OS" -input-charset iso8859-1 -o ${ISO_IMAGE}
+        -b t-os.bin -c boot.cat
+        ${BUILD_DIR}/iso
+    DEPENDS t_os
+    COMMENT "Creating T-OS ISO image"
+    WORKING_DIRECTORY ${BUILD_DIR}
+)
+
+# 7. Run Target
 add_custom_target(run
     COMMAND qemu-system-i386 -fda ${OS_IMAGE}
     DEPENDS t_os
     COMMENT "Launching T-OS in QEMU"
+)
+
+# 8. Run from ISO
+add_custom_target(run_iso
+    COMMAND qemu-system-i386 -cdrom ${ISO_IMAGE}
+    DEPENDS iso
+    COMMENT "Launching T-OS from ISO in QEMU"
 )

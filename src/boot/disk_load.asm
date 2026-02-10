@@ -1,18 +1,17 @@
 disk_load:
-    push dx         ; Store DX on stack so later we can recall how many sectors were requested to be read ,
-                    ; even if it is altered in the meantime
-    mov ah, 0x02    ; BIOS read sector function
-    mov al, dh      ; Read DH sectors
-    mov ch, 0x00    ; Select cylinder 0
-    mov dh, 0x00    ; Select head 0
-    mov cl, 0x02    ; Start reading from second sector (i.e. after the boot sector)
-
-    int 0x13        ; BIOS interrupt
-    jc disk_error   ; Jump if error (i.e. carry flag set)
-
-    pop dx          ; Restore DX from the stack
-    cmp dh, al      ; if AL (sectors read) != DH (sectors expected)
-    jne disk_error  ;   display error message
+    ; DH = sector count, DL = drive, ES:BX = buffer (0:0x1000)
+    push dx
+    mov ah, 0x02    ; CHS read - required for floppy (LBA often not supported)
+    mov al, dh      ; Sectors to read
+    mov ch, 0x00    ; Cylinder 0
+    mov cl, 0x02    ; Sector 2 (1-based = first sector after boot)
+    mov dh, 0x00    ; Head 0
+    ; DL = drive already set by caller
+    int 0x13
+    jc disk_error
+    pop dx
+    cmp al, dh
+    jne disk_error
     ret
 
 disk_error:
