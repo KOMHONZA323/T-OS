@@ -4,6 +4,7 @@
 
 void draw_interface();
 void draw_wallpaper();
+void draw_desktop_icons();
 void draw_top_bar();
 void draw_bottom_bar();
 void draw_window(int x, int y, int w, int h, const char* title, const char* content);
@@ -12,7 +13,7 @@ void draw_loading_screen(); // Keep from previous step
 void kernel_main(void) {
     clear_screen();
 
-    // Simulate Loading Screen (as per previous step)
+    // Simulate Loading Screen
     draw_loading_screen();
     clear_screen();
 
@@ -29,11 +30,14 @@ void draw_interface() {
     // 1. Layer 0: Wallpaper
     draw_wallpaper();
 
-    // 2. Layer 2: Taskbars (Always on top of wallpaper)
+    // 2. Layer 1: Desktop Icons
+    draw_desktop_icons();
+
+    // 3. Layer 2: Taskbars (Always on top of wallpaper)
     draw_top_bar();
     draw_bottom_bar();
 
-    // 3. Layer 3: Windows (On top of taskbars)
+    // 4. Layer 3: Windows (On top of taskbars)
     // C Code Editor
     draw_window(3, 4, 38, 14, " kernel.c ",
         "void main() {\n"
@@ -56,6 +60,22 @@ void draw_interface() {
 void draw_wallpaper() {
     // Fill with 'Deep Charcoal' pattern (Light Shade 0xB0 with Dark Grey)
     draw_fill(0, 0, MAX_COLS, MAX_ROWS, WALLPAPER_CHAR, WALLPAPER_ATTR);
+}
+
+void draw_desktop_icons() {
+    // Draw Icons (Layer 1)
+    // Simple mock icons
+    // "My PC"
+    kprint_at_attr(" [PC] ", 2, 2, WIN_CONTENT_ATTR);
+    kprint_at_attr("My PC ", 2, 3, WIN_CONTENT_ATTR);
+
+    // "Trash"
+    kprint_at_attr(" [TR] ", 2, 5, WIN_CONTENT_ATTR);
+    kprint_at_attr("Trash ", 2, 6, WIN_CONTENT_ATTR);
+
+    // "Home"
+    kprint_at_attr(" [HM] ", 2, 8, WIN_CONTENT_ATTR);
+    kprint_at_attr("Home  ", 2, 9, WIN_CONTENT_ATTR);
 }
 
 void draw_top_bar() {
@@ -82,25 +102,33 @@ void draw_bottom_bar() {
     draw_fill(0, y_start, MAX_COLS, 3, TASKBAR_CHAR, TASKBAR_ATTR);
 
     // Start Button: Stylized T (Row 23)
-    // Using Light Blue on Dark Grey
-    // Since we are using Block Chars for BG, drawing text over it requires changing the char.
-    // We replace the block char with the 'T' char, but we are stuck with Black BG.
-    // So: Black 'T' on Light Blue BG? Or Light Blue 'T' on Black BG?
-    // Let's use Light Blue on Black for the Icon area.
+    // Using Light Blue on Black for the Icon area (overwriting block char)
+    // Row 1 of Taskbar
     kprint_at_attr(" [T] ", 1, y_start + 1, WIN_ACCENT_ATTR);
 
     // Centered Apps (Windows 11 style)
     // We need to 'clear' the block chars where the icons are to draw text.
     int center = 30;
-    kprint_at_attr(" [Code] ", center, y_start + 1, WIN_CONTENT_ATTR);
-    kprint_at_attr(" [Term] ", center + 8, y_start + 1, WIN_CONTENT_ATTR);
-
-    // Active App Indicator (Glowing Blue Line under Code)
-    // Underline? VGA attr doesn't support underline easily without monochrome.
-    // We can use a different char or color.
-    // Let's use a cyan 'period' or 'underscore' below it? No space.
-    // Let's make the active app text Blue.
+    // App 1: [Code] (Active)
     kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
+    // Active Indicator (Blue Line below)
+    // Use 0xDC (Lower Half Block) or '_'
+    // Since we want a thin line, use '_' or 0xC4 (Single horizontal line)
+    // But '_' is usually low. 0xC4 is centered.
+    // Let's try to draw just a blue line using spaces with BLUE background?
+    // No, background colors limited to 0-7 (no Blue background, only Blue FG).
+    // So we must use a char with Blue FG.
+    // 0xDC (Lower half block) with Blue FG -> Bottom half of cell is blue.
+    // Or 0xDF (Upper half block) with Blue FG -> Top half of cell is blue.
+    // Or 0xC4 (Horizontal Line) with Blue FG -> Middle line.
+    // '_' (Underscore) with Blue FG -> Bottom line.
+    // Let's use '_' for a subtle glow.
+    // We draw it at y_start + 2 (bottom row of taskbar)
+    char active_line[] = { '_', '_', '_', '_', '_', '_', '_', '_', 0 };
+    kprint_at_attr(active_line, center, y_start + 2, WIN_ACCENT_ATTR);
+
+    // App 2: [Term]
+    kprint_at_attr(" [Term] ", center + 10, y_start + 1, WIN_CONTENT_ATTR);
 
     // System Tray (Right)
     kprint_at_attr(" ^  ENG  12:00 ", 65, y_start + 1, WIN_CONTENT_ATTR);
@@ -135,10 +163,6 @@ void draw_window(int x, int y, int w, int h, const char* title, const char* cont
     }
 }
 
-// Re-implement loading screen to use new constants if needed, or keep as is.
-// Using existing implementation from previous step but ensuring it compiles.
-// Note: previous implementation used constants like COLOR_BAR which are removed.
-// We must update it.
 void draw_loading_screen() {
     int center_col = 30;
     int center_row = 10;
