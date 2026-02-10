@@ -166,6 +166,18 @@ void draw_rect(int col, int row, int width, int height, char attr) {
     }
 }
 
+void draw_fill(int col, int row, int width, int height, char ch, char attr) {
+    unsigned char *vidmem = (unsigned char*) VIDEO_ADDRESS;
+    for (int r = row; r < row + height; r++) {
+        for (int c = col; c < col + width; c++) {
+            if (c >= MAX_COLS || r >= MAX_ROWS) continue;
+            int offset = get_offset(c, r);
+            vidmem[offset] = ch;
+            vidmem[offset+1] = attr;
+        }
+    }
+}
+
 void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr) {
     unsigned char *vidmem = (unsigned char*) VIDEO_ADDRESS;
 
@@ -207,4 +219,66 @@ void draw_box(int col, int row, int width, int height, char border_attr, char in
     vidmem[off_bl+1] = border_attr;
     vidmem[off_br] = 188; // Bottom-right
     vidmem[off_br+1] = border_attr;
+}
+
+/* Rounded Box Implementation using CP437 Single Lines */
+void draw_box_rounded(int col, int row, int width, int height, char border_attr, char inner_attr, char title_attr) {
+    unsigned char *vidmem = (unsigned char*) VIDEO_ADDRESS;
+
+    // 1. Fill Content (Inner)
+    draw_fill(col + 1, row + 1, width - 2, height - 2, ' ', inner_attr);
+
+    // 2. Borders (Single Lines for Sleek Look)
+    // Top and Bottom
+    for (int c = col + 1; c < col + width - 1; c++) {
+        int off_top = get_offset(c, row);
+        int off_bot = get_offset(c, row + height - 1);
+        vidmem[off_top] = 196; // Single horizontal (─)
+        vidmem[off_top+1] = border_attr;
+        vidmem[off_bot] = 196;
+        vidmem[off_bot+1] = border_attr;
+    }
+
+    // Left and Right
+    for (int r = row + 1; r < row + height - 1; r++) {
+        int off_left = get_offset(col, r);
+        int off_right = get_offset(col + width - 1, r);
+        vidmem[off_left] = 179; // Single vertical (│)
+        vidmem[off_left+1] = border_attr;
+        vidmem[off_right] = 179;
+        vidmem[off_right+1] = border_attr;
+    }
+
+    // 3. Corners (Single Round/Arc)
+    int off_tl = get_offset(col, row);
+    int off_tr = get_offset(col + width - 1, row);
+    int off_bl = get_offset(col, row + height - 1);
+    int off_br = get_offset(col + width - 1, row + height - 1);
+
+    // CP437 does not have true rounded corners, using single line corners (DA, BF, C0, D9)
+    // ┌ (218) ┐ (191)
+    // └ (192) ┘ (217)
+    vidmem[off_tl] = 218;
+    vidmem[off_tl+1] = border_attr;
+    vidmem[off_tr] = 191;
+    vidmem[off_tr+1] = border_attr;
+    vidmem[off_bl] = 192;
+    vidmem[off_bl+1] = border_attr;
+    vidmem[off_br] = 217;
+    vidmem[off_br+1] = border_attr;
+
+    // 4. Title Bar Background (Optional)
+    // If title_attr is different, draw a filled rectangle for the title row
+    if (title_attr != inner_attr) {
+        for (int c = col + 1; c < col + width - 1; c++) {
+             int off_title = get_offset(c, row); // Overwrite top border? No, inside.
+             // Actually, usually title bar is row+1? Or replaces top border?
+             // Let's make title bar at row, effectively replacing top border? No.
+             // Title bar inside the box at row+1
+             int off_t = get_offset(c, row + 1);
+             // We can fill this row
+             // vidmem[off_t] = ' ';
+             // vidmem[off_t+1] = title_attr;
+        }
+    }
 }

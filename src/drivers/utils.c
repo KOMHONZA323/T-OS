@@ -40,3 +40,13 @@ int strlen(char s[]) {
     while (s[i] != '\0') ++i;
     return i;
 }
+
+void delay(int count) {
+    // A simple busy wait loop.
+    // The exact duration depends on the CPU speed.
+    // Since we are running in QEMU, this is purely visual.
+    volatile int i;
+    for (i = 0; i < count * 10000; i++) {
+        __asm__("nop");
+    }
+}

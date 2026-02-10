@@ -1,47 +1,41 @@
-/*
- * T-OS Minimal Kernel
- * Freestanding C Environment - TUI Implementation
- */
-
 #include "screen.h"
 #include "utils.h"
+#include "theme.h"
 
-/* Attribute Byte: (Background << 4) | Foreground
- * 0: Black, 1: Blue, 2: Green, 3: Cyan, 4: Red, 5: Magenta, 6: Brown, 7: Light Grey
- * 8: Dark Grey, 9: Light Blue, A: Light Green, B: Light Cyan, C: Light Red, D: Light Magenta, E: Yellow, F: White
- */
-#define COLOR_BG        0x0F // White on Black
-#define COLOR_BAR       0x1F // White on Blue
-#define COLOR_WIN_BG    0x0F // White on Black
-#define COLOR_WIN_BORDER 0x07 // Light Grey on Black
-#define COLOR_SHADOW    0x08 // Dark Grey on Black (Text) - used with block char, or use 0x70 for background shadow
-
-void draw_desktop();
+void draw_interface();
+void draw_wallpaper();
 void draw_top_bar();
 void draw_bottom_bar();
 void draw_window(int x, int y, int w, int h, const char* title, const char* content);
+void draw_loading_screen(); // Keep from previous step
 
 void kernel_main(void) {
     clear_screen();
-    draw_desktop();
 
-    // Position cursor for input (simulated)
-    // kprint_at("> ", 2, 22);
+    // Simulate Loading Screen (as per previous step)
+    draw_loading_screen();
+    clear_screen();
 
-    while (1)
-        ;
+    // Main GUI Loop (Mock)
+    while (1) {
+        draw_interface();
+
+        // Just halt here to save CPU
+        __asm__("hlt");
+    }
 }
 
-void draw_desktop() {
-    // 2. Top Bar (Fedora Style)
-    draw_top_bar();
+void draw_interface() {
+    // 1. Layer 0: Wallpaper
+    draw_wallpaper();
 
-    // 3. Bottom Taskbar (Windows Hybrid)
+    // 2. Layer 2: Taskbars (Always on top of wallpaper)
+    draw_top_bar();
     draw_bottom_bar();
 
-    // 4. Windows
-    // Window 1: C Code Editor
-    draw_window(3, 3, 38, 14, " kernel.c ",
+    // 3. Layer 3: Windows (On top of taskbars)
+    // C Code Editor
+    draw_window(3, 4, 38, 14, " kernel.c ",
         "void main() {\n"
         "  // T-OS Kernel\n"
         "  init_video();\n"
@@ -49,8 +43,8 @@ void draw_desktop() {
         "  while(1);\n"
         "}");
 
-    // Window 2: Terminal
-    draw_window(44, 6, 32, 11, " Terminal ",
+    // Terminal
+    draw_window(44, 7, 32, 11, " Terminal ",
         "$ make\n"
         "[OK] Kernel built.\n"
         "[OK] Bootloader.\n"
@@ -59,54 +53,71 @@ void draw_desktop() {
     );
 }
 
+void draw_wallpaper() {
+    // Fill with 'Deep Charcoal' pattern (Light Shade 0xB0 with Dark Grey)
+    draw_fill(0, 0, MAX_COLS, MAX_ROWS, WALLPAPER_CHAR, WALLPAPER_ATTR);
+}
+
 void draw_top_bar() {
-    // Background
-    draw_rect(0, 0, 80, 1, COLOR_BAR);
+    // Fedora Style: Slim (1 Row)
+    // Translucent Black -> Solid Black Background
+    draw_fill(0, 0, MAX_COLS, 1, ' ', TOP_BAR_BG);
 
-    // Text
-    kprint_at_attr(" Activities ", 0, 0, COLOR_BAR); // Left
+    // Left: "Activities" (White)
+    kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
 
-    // Center Clock (Mock)
-    kprint_at_attr(" 12:00 ", 37, 0, COLOR_BAR);
+    // Center: Clock (Blue Highlight)
+    kprint_at_attr(" Oct 25 12:00 ", 35, 0, WIN_ACCENT_ATTR);
 
-    // Right Icons
-    kprint_at_attr(" WF BT PW ", 70, 0, COLOR_BAR);
+    // Right: Status Icons (Mock)
+    kprint_at_attr(" WF BT PW ", 70, 0, TOP_BAR_TEXT_ATTR);
 }
 
 void draw_bottom_bar() {
-    // Background
-    draw_rect(0, 24, 80, 1, COLOR_BAR);
+    // Windows Hybrid: Thicker (3 Rows = ~48px)
+    int y_start = MAX_ROWS - 3;
 
-    // Start Button (Stylized T)
-    kprint_at_attr(" [T] ", 0, 24, COLOR_BAR);
+    // Background: 'Frosted Glass' (Simulated with Dark Grey block pattern or just Black)
+    // Let's use Block Character 0xDB with Dark Grey FG to simulate a solid Dark Grey bar
+    draw_fill(0, y_start, MAX_COLS, 3, TASKBAR_CHAR, TASKBAR_ATTR);
 
-    // Center Icons (Mock)
-    kprint_at_attr(" [Code] [Term] [File] ", 30, 24, COLOR_BAR);
+    // Start Button: Stylized T (Row 23)
+    // Using Light Blue on Dark Grey
+    // Since we are using Block Chars for BG, drawing text over it requires changing the char.
+    // We replace the block char with the 'T' char, but we are stuck with Black BG.
+    // So: Black 'T' on Light Blue BG? Or Light Blue 'T' on Black BG?
+    // Let's use Light Blue on Black for the Icon area.
+    kprint_at_attr(" [T] ", 1, y_start + 1, WIN_ACCENT_ATTR);
 
-    // Show Desktop sliver
-    kprint_at_attr("||", 78, 24, COLOR_BAR);
+    // Centered Apps (Windows 11 style)
+    // We need to 'clear' the block chars where the icons are to draw text.
+    int center = 30;
+    kprint_at_attr(" [Code] ", center, y_start + 1, WIN_CONTENT_ATTR);
+    kprint_at_attr(" [Term] ", center + 8, y_start + 1, WIN_CONTENT_ATTR);
+
+    // Active App Indicator (Glowing Blue Line under Code)
+    // Underline? VGA attr doesn't support underline easily without monochrome.
+    // We can use a different char or color.
+    // Let's use a cyan 'period' or 'underscore' below it? No space.
+    // Let's make the active app text Blue.
+    kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
+
+    // System Tray (Right)
+    kprint_at_attr(" ^  ENG  12:00 ", 65, y_start + 1, WIN_CONTENT_ATTR);
 }
 
 void draw_window(int x, int y, int w, int h, const char* title, const char* content) {
-    // Shadow (Right and Bottom)
-    // Using 0x07 (Light Grey) char on Black for simplicity, or 0x08 (Dark Grey)
-    // Actually, screen.c draw_rect prints spaces with attribute.
-    // If we want a shadow effect, we can use attribute 0x08 (Dark Grey foreground, Black background)
-    // But spaces are empty.
-    // Let's use attribute 0x70 (Black foreground, Light Grey background) -> Solid Light Grey block
-    // Or 0x80 (Black on Dark Grey) -> but bit 7 is blink.
-    // Let's stick to 0x08 (Dark Grey on Black) and assume we can't do block shadow easily without changing draw_rect to accept char.
-    // I'll skip shadow for now to keep it clean.
+    // Draw Frame (Rounded Corners, Deep Charcoal Border)
+    draw_box_rounded(x, y, w, h, WIN_BORDER_ATTR, WIN_CONTENT_ATTR, WIN_TITLE_ATTR);
 
-    // Window Box
-    draw_box(x, y, w, h, COLOR_WIN_BORDER, COLOR_WIN_BG);
+    // Draw Title (Centered or Left)
+    // Mock "Traffic Lights" or Buttons: [X] [-]
+    kprint_at_attr(" X ", x + w - 4, y, WIN_ACCENT_ATTR); // Close button
+    kprint_at_attr( (char*)title, x + 2, y, WIN_TITLE_ATTR);
 
-    // Title
-    kprint_at((char*)title, x + 2, y);
-
-    // Content
+    // Draw Content
     int cx = x + 2;
-    int cy = y + 2;
+    int cy = y + 2; // Start below title/border
 
     const char* p = content;
     while(*p) {
@@ -115,12 +126,41 @@ void draw_window(int x, int y, int w, int h, const char* title, const char* cont
             cx = x + 2;
         } else {
             char str[2] = {*p, 0};
-            // Ensure we don't overflow window
             if (cx < x + w - 1 && cy < y + h - 1) {
-                kprint_at(str, cx, cy);
+                kprint_at_attr(str, cx, cy, WIN_CONTENT_ATTR);
             }
             cx++;
         }
         p++;
     }
+}
+
+// Re-implement loading screen to use new constants if needed, or keep as is.
+// Using existing implementation from previous step but ensuring it compiles.
+// Note: previous implementation used constants like COLOR_BAR which are removed.
+// We must update it.
+void draw_loading_screen() {
+    int center_col = 30;
+    int center_row = 10;
+
+    // Draw Logo
+    kprint_at_attr("       T-OS       ", center_col, center_row, WIN_ACCENT_ATTR);
+    kprint_at_attr(" System Loading...", center_col, center_row + 2, WIN_CONTENT_ATTR);
+
+    // Draw Progress Bar Frame
+    int bar_width = 20;
+    int bar_col = center_col;
+    int bar_row = center_row + 4;
+
+    kprint_at_attr("[", bar_col - 1, bar_row, WIN_CONTENT_ATTR);
+    kprint_at_attr("]", bar_col + bar_width, bar_row, WIN_CONTENT_ATTR);
+
+    // Animate
+    for (int i = 0; i < bar_width; i++) {
+        char progress[2] = { '=', 0 };
+        kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+        delay(3000);
+    }
+
+    delay(5000);
 }

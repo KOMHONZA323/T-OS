@@ -20,4 +20,8 @@ void kprint_backspace();
 void draw_rect(int col, int row, int width, int height, char attr);
 void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr);
 
+/* T-OS Specific */
+void draw_fill(int col, int row, int width, int height, char c, char attr);
+void draw_box_rounded(int col, int row, int width, int height, char border_attr, char inner_attr, char title_attr);
+
 #endif

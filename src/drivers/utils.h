@@ -6,5 +6,6 @@ void memory_set(char *dest, char val, int len);
 void int_to_ascii(int n, char str[]);
 void reverse(char s[]);
 int strlen(char s[]);
+void delay(int count);
 
 #endif
