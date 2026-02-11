@@ -8,11 +8,9 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffreestanding -m32 -g -fno-pie -fno-stack-p
 set(BUILD_DIR "${CMAKE_BINARY_DIR}")
 set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/boot.asm")
 set(KERNEL_ENTRY "${CMAKE_SOURCE_DIR}/src/kernel/kernel_entry.asm")
-set(KERNEL_C "${CMAKE_SOURCE_DIR}/src/kernel/kernel.c")
 
 set(BOOT_BIN "${BUILD_DIR}/boot.bin")
 set(KERNEL_ENTRY_OBJ "${BUILD_DIR}/kernel_entry.o")
-set(KERNEL_OBJ "${BUILD_DIR}/kernel.o")
 set(KERNEL_BIN "${BUILD_DIR}/kernel.bin")
 set(OS_IMAGE "${BUILD_DIR}/t-os.bin")
 
@@ -30,24 +28,33 @@ add_custom_command(OUTPUT ${KERNEL_ENTRY_OBJ}
     COMMENT "Assembling Kernel Entry"
 )
 
-# 3. Compile Kernel C
-add_custom_command(OUTPUT ${KERNEL_OBJ}
-    COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -fno-stack-protector -c ${KERNEL_C} -o ${KERNEL_OBJ}
-    DEPENDS ${KERNEL_C}
-    COMMENT "Compiling Kernel C"
-)
+# 3. Compile Kernel C Sources
+file(GLOB_RECURSE KERNEL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/*.c" "${CMAKE_SOURCE_DIR}/src/drivers/*.c")
+
+set(KERNEL_OBJECTS "")
+foreach(SOURCE_FILE ${KERNEL_SOURCES})
+    get_filename_component(FILE_NAME ${SOURCE_FILE} NAME_WE)
+    set(OBJECT_FILE "${BUILD_DIR}/${FILE_NAME}.o")
+    list(APPEND KERNEL_OBJECTS ${OBJECT_FILE})
+
+    add_custom_command(OUTPUT ${OBJECT_FILE}
+        COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -fno-stack-protector -c ${SOURCE_FILE} -o ${OBJECT_FILE}
+        DEPENDS ${SOURCE_FILE}
+        COMMENT "Compiling ${FILE_NAME}"
+    )
+endforeach()
 
 # 4. Link Kernel
 add_custom_command(OUTPUT ${KERNEL_BIN}
-    COMMAND ld -o ${KERNEL_BIN} -Ttext 0x1000 ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJ} --oformat binary -m elf_i386
-    DEPENDS ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJ}
+    COMMAND ld -o ${KERNEL_BIN} -Ttext 0x1000 ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJECTS} --oformat binary -m elf_i386
+    DEPENDS ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJECTS}
     COMMENT "Linking Kernel"
 )
 
 # 5. Create OS Image
 add_custom_target(t_os ALL
     COMMAND cat ${BOOT_BIN} ${KERNEL_BIN} > ${OS_IMAGE}
-    # Pad to 1.44MB floppy size (optional, but ensures qemu treats it right)
+    # Pad to 1.44MB floppy size
     COMMAND truncate -s 1440k ${OS_IMAGE}
     DEPENDS ${BOOT_BIN} ${KERNEL_BIN}
     COMMENT "Creating T-OS Disk Image"
