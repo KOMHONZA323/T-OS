@@ -12,6 +12,15 @@ void memory_set(char *dest, char val, int len) {
     for ( ; len != 0; len--) *temp++ = val;
 }
 
+
+int strlen(const char *s) {
+    int i = 0;
+    while (s[i] != '\0') ++i;
+    return i;
+}
+
+
+
 void int_to_ascii(int n, char str[]) {
     int i, sign;
     if ((sign = n) < 0) n = -n;
@@ -28,6 +37,7 @@ void int_to_ascii(int n, char str[]) {
 
 void reverse(char s[]) {
     int c, i, j;
+
     for (i = 0, j = strlen(s)-1; i < j; i++, j--) {
         c = s[i];
         s[i] = s[j];
@@ -35,18 +45,23 @@ void reverse(char s[]) {
     }
 }
 
+
+void itoa(int n, char str[]) {
+    int i, sign;
+    if ((sign = n) < 0) n = -n;
+    i = 0;
+    do {
+        str[i++] = n % 10 + '0';
+    } while ((n /= 10) > 0);
+    if (sign < 0) str[i++] = '-';
+    str[i] = '\0';
+    reverse(str);
+}
+
+void delay(int count) {
+    while(count > 0) count--;
 int strlen(char s[]) {
     int i = 0;
     while (s[i] != '\0') ++i;
     return i;
-}
-
-void delay(int count) {
-    // A simple busy wait loop.
-    // The exact duration depends on the CPU speed.
-    // Since we are running in QEMU, this is purely visual.
-    volatile int i;
-    for (i = 0; i < count * 10000; i++) {
-        __asm__("nop");
-    }
 }
