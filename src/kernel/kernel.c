@@ -1,6 +1,9 @@
 #include "screen.h"
 #include "utils.h"
 #include "theme.h"
+#include "keyboard.h"
+#include "ata.h"
+#include "ports.h"
 
 void draw_interface();
 void draw_wallpaper();
@@ -8,21 +11,66 @@ void draw_desktop_icons();
 void draw_top_bar();
 void draw_bottom_bar();
 void draw_window(int x, int y, int w, int h, const char* title, const char* content);
-void draw_loading_screen(); // Keep from previous step
+void draw_loading_screen();
+void open_settings();
+
+// Global state
+int show_settings = 0;
 
 void kernel_main(void) {
-    clear_screen();
+    // 1. Initialize Screen (VBE)
+    init_screen();
 
-    // Simulate Loading Screen
+    // 2. Loading Screen
     draw_loading_screen();
     clear_screen();
 
-    // Main GUI Loop (Mock)
+    // 3. Main Loop
     while (1) {
+        // Handle Input
+        char c = get_char();
+        if (c == 's') {
+            show_settings = !show_settings;
+            clear_screen(); // Clear to redraw background
+        }
+
+        // Logic for Settings
+        if (show_settings) {
+            // Check for 1, 2, 3 selection
+            if (c == '1') {
+                // 720p
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 0;    // 720p
+                ata_write_sector(2879, config);
+                // Reboot
+                port_byte_out(0x64, 0xFE);
+            } else if (c == '2') {
+                // 1080p
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 1;    // 1080p
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
+            } else if (c == '3') {
+                // 1440p
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 2;    // 1440p
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
+            }
+        }
+
+        // Draw
         draw_interface();
 
-        // Just halt here to save CPU
-        __asm__("hlt");
+        if (show_settings) {
+            open_settings();
+        }
+
+        // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
+        // delay(100);
     }
 }
 
@@ -38,33 +86,38 @@ void draw_interface() {
     draw_bottom_bar();
 
     // 4. Layer 3: Windows (On top of taskbars)
-    // C Code Editor
-    draw_window(3, 4, 38, 14, " kernel.c ",
-        "void main() {\n"
-        "  // T-OS Kernel\n"
-        "  init_video();\n"
-        "  kprint(\"Hello\");\n"
-        "  while(1);\n"
-        "}");
+    if (!show_settings) {
+        // Only show these if settings not open, to keep it clean?
+        // Or show them behind.
 
-    // Terminal
-    draw_window(44, 7, 32, 11, " Terminal ",
-        "$ make\n"
-        "[OK] Kernel built.\n"
-        "[OK] Bootloader.\n"
-        "$ ./run\n"
-        "Starting T-OS..."
-    );
+        // C Code Editor
+        draw_window(3, 4, 38, 14, " kernel.c ",
+            "void main() {\n"
+            "  // T-OS Kernel\n"
+            "  init_video();\n"
+            "  kprint(\"Hello\");\n"
+            "  while(1);\n"
+            "}");
+
+        // Terminal
+        draw_window(44, 7, 32, 11, " Terminal ",
+            "$ make\n"
+            "[OK] Kernel built.\n"
+            "[OK] Bootloader.\n"
+            "$ ./run\n"
+            "Starting T-OS..."
+        );
+    }
 }
 
 void draw_wallpaper() {
-    // Fill with 'Deep Charcoal' pattern (Light Shade 0xB0 with Dark Grey)
+    // Fill with 'Deep Charcoal' pattern
     draw_fill(0, 0, MAX_COLS, MAX_ROWS, WALLPAPER_CHAR, WALLPAPER_ATTR);
 }
 
 void draw_desktop_icons() {
     // Draw Icons (Layer 1)
-    // Simple mock icons
+
     // "My PC"
     kprint_at_attr(" [PC] ", 2, 2, WIN_CONTENT_ATTR);
     kprint_at_attr("My PC ", 2, 3, WIN_CONTENT_ATTR);
@@ -73,79 +126,63 @@ void draw_desktop_icons() {
     kprint_at_attr(" [TR] ", 2, 5, WIN_CONTENT_ATTR);
     kprint_at_attr("Trash ", 2, 6, WIN_CONTENT_ATTR);
 
-    // "Home"
-    kprint_at_attr(" [HM] ", 2, 8, WIN_CONTENT_ATTR);
-    kprint_at_attr("Home  ", 2, 9, WIN_CONTENT_ATTR);
+    // "Settings" Shortcut
+    kprint_at_attr(" [ST] ", 2, 8, WIN_CONTENT_ATTR);
+    kprint_at_attr("Press 's'", 2, 9, WIN_CONTENT_ATTR);
 }
 
 void draw_top_bar() {
     // Fedora Style: Slim (1 Row)
-    // Translucent Black -> Solid Black Background
     draw_fill(0, 0, MAX_COLS, 1, ' ', TOP_BAR_BG);
 
-    // Left: "Activities" (White)
+    // Left: "Activities"
     kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
 
-    // Center: Clock (Blue Highlight)
+    // Center: Clock
     kprint_at_attr(" Oct 25 12:00 ", 35, 0, WIN_ACCENT_ATTR);
 
-    // Right: Status Icons (Mock)
+    // Right: Status Icons
     kprint_at_attr(" WF BT PW ", 70, 0, TOP_BAR_TEXT_ATTR);
 }
 
 void draw_bottom_bar() {
-    // Windows Hybrid: Thicker (3 Rows = ~48px)
+    // Windows Hybrid: Thicker (3 Rows)
     int y_start = MAX_ROWS - 3;
+    if (y_start < 0) y_start = 0; // Safety
 
-    // Background: 'Frosted Glass' (Simulated with Dark Grey block pattern or just Black)
-    // Let's use Block Character 0xDB with Dark Grey FG to simulate a solid Dark Grey bar
     draw_fill(0, y_start, MAX_COLS, 3, TASKBAR_CHAR, TASKBAR_ATTR);
 
-    // Start Button: Stylized T (Row 23)
-    // Using Light Blue on Black for the Icon area (overwriting block char)
-    // Row 1 of Taskbar
+    // Start Button
     kprint_at_attr(" [T] ", 1, y_start + 1, WIN_ACCENT_ATTR);
 
-    // Centered Apps (Windows 11 style)
-    // We need to 'clear' the block chars where the icons are to draw text.
+    // Centered Apps
     int center = 30;
-    // App 1: [Code] (Active)
     kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
-    // Active Indicator (Blue Line below)
-    // Use 0xDC (Lower Half Block) or '_'
-    // Since we want a thin line, use '_' or 0xC4 (Single horizontal line)
-    // But '_' is usually low. 0xC4 is centered.
-    // Let's try to draw just a blue line using spaces with BLUE background?
-    // No, background colors limited to 0-7 (no Blue background, only Blue FG).
-    // So we must use a char with Blue FG.
-    // 0xDC (Lower half block) with Blue FG -> Bottom half of cell is blue.
-    // Or 0xDF (Upper half block) with Blue FG -> Top half of cell is blue.
-    // Or 0xC4 (Horizontal Line) with Blue FG -> Middle line.
-    // '_' (Underscore) with Blue FG -> Bottom line.
-    // Let's use '_' for a subtle glow.
-    // We draw it at y_start + 2 (bottom row of taskbar)
+
+    // Active line
     char active_line[] = { '_', '_', '_', '_', '_', '_', '_', '_', 0 };
     kprint_at_attr(active_line, center, y_start + 2, WIN_ACCENT_ATTR);
 
-    // App 2: [Term]
     kprint_at_attr(" [Term] ", center + 10, y_start + 1, WIN_CONTENT_ATTR);
 
-    // System Tray (Right)
+    // System Tray
     kprint_at_attr(" ^  ENG  12:00 ", 65, y_start + 1, WIN_CONTENT_ATTR);
 }
 
 void draw_window(int x, int y, int w, int h, const char* title, const char* content) {
-    // Draw Frame (Rounded Corners, Deep Charcoal Border)
+    // Check bounds
+    if (x + w > MAX_COLS) w = MAX_COLS - x;
+    if (y + h > MAX_ROWS) h = MAX_ROWS - y;
+
     draw_box_rounded(x, y, w, h, WIN_BORDER_ATTR, WIN_CONTENT_ATTR, WIN_TITLE_ATTR);
 
-    // Draw Title (Centered or Left)
-    // Mock "Traffic Lights" or Buttons: [X] [-]
-    kprint_at_attr(" X ", x + w - 4, y, WIN_ACCENT_ATTR); // Close button
+    // Title
+    kprint_at_attr(" X ", x + w - 4, y, WIN_ACCENT_ATTR);
     kprint_at_attr( (char*)title, x + 2, y, WIN_TITLE_ATTR);
 
-    // Draw Content
+    // Content
     int cx = x + 2;
-    int cy = y + 2; // Start below title/border
+    int cy = y + 2;
 
     const char* p = content;
     while(*p) {
@@ -163,15 +200,22 @@ void draw_window(int x, int y, int w, int h, const char* title, const char* cont
     }
 }
 
-void draw_loading_screen() {
-    int center_col = 30;
-    int center_row = 10;
+void open_settings() {
+    draw_window(10, 5, 60, 15, " Settings ",
+        "Resolution Selection:\n\n"
+        "Press '1': 1280x720 (HD)\n"
+        "Press '2': 1920x1080 (FHD)\n"
+        "Press '3': 2560x1440 (QHD)\n\n"
+        "System will reboot automatically.");
+}
 
-    // Draw Logo
+void draw_loading_screen() {
+    int center_col = MAX_COLS / 2 - 10;
+    int center_row = MAX_ROWS / 2 - 2;
+
     kprint_at_attr("       T-OS       ", center_col, center_row, WIN_ACCENT_ATTR);
     kprint_at_attr(" System Loading...", center_col, center_row + 2, WIN_CONTENT_ATTR);
 
-    // Draw Progress Bar Frame
     int bar_width = 20;
     int bar_col = center_col;
     int bar_row = center_row + 4;
@@ -179,7 +223,6 @@ void draw_loading_screen() {
     kprint_at_attr("[", bar_col - 1, bar_row, WIN_CONTENT_ATTR);
     kprint_at_attr("]", bar_col + bar_width, bar_row, WIN_CONTENT_ATTR);
 
-    // Animate
     for (int i = 0; i < bar_width; i++) {
         char progress[2] = { '=', 0 };
         kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);

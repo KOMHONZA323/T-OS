@@ -1,27 +1,73 @@
 #ifndef SCREEN_H
 #define SCREEN_H
 
-#define VIDEO_ADDRESS 0xb8000
-#define MAX_ROWS 25
-#define MAX_COLS 80
-#define WHITE_ON_BLACK 0x0f
-#define RED_ON_WHITE 0xf4
+#include <stdint.h>
 
-/* Screen i/o ports */
-#define REG_SCREEN_CTRL 0x3d4
-#define REG_SCREEN_DATA 0x3d5
+// Screen Info Struct (Must match Stage 2 layout at 0x5000)
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint8_t bpp;
+    uint16_t pitch;
+    uint32_t framebuffer;
+} __attribute__((packed)) ScreenInfo;
+
+// Colors (ARGB 8888)
+#define COLOR_BLACK 0xFF000000
+#define COLOR_WHITE 0xFFFFFFFF
+#define COLOR_RED   0xFFFF0000
+#define COLOR_GREEN 0xFF00FF00
+#define COLOR_BLUE  0xFF0000FF
+#define COLOR_CYAN  0xFF00FFFF
+#define COLOR_MAGENTA 0xFFFF00FF
+#define COLOR_YELLOW 0xFFFFFF00
+#define COLOR_GRAY  0xFF808080
+#define COLOR_LIGHT_GRAY 0xFFC0C0C0
+
+// Legacy VGA Attribute Mapping
+// We will map 4-bit VGA colors to 32-bit ARGB
+#define VGA_BLACK 0
+#define VGA_BLUE 1
+#define VGA_GREEN 2
+#define VGA_CYAN 3
+#define VGA_RED 4
+#define VGA_MAGENTA 5
+#define VGA_BROWN 6
+#define VGA_LIGHT_GRAY 7
+#define VGA_DARK_GRAY 8
+#define VGA_LIGHT_BLUE 9
+#define VGA_LIGHT_GREEN 10
+#define VGA_LIGHT_CYAN 11
+#define VGA_LIGHT_RED 12
+#define VGA_LIGHT_MAGENTA 13
+#define VGA_YELLOW 14
+#define VGA_WHITE 15
+
+// Attributes (FG | BG << 4)
+#define WHITE_ON_BLACK (VGA_WHITE | (VGA_BLACK << 4))
+#define RED_ON_WHITE (VGA_RED | (VGA_WHITE << 4))
+
+// Screen Size Constants (Dynamic now)
+// Will be set in init_screen()
+extern int MAX_COLS;
+extern int MAX_ROWS;
 
 /* Public kernel API */
+void init_screen();
 void clear_screen();
 void kprint_at(char *message, int col, int row);
 void kprint_at_attr(char *message, int col, int row, char attr);
 void kprint(char *message);
 void kprint_backspace();
-void draw_rect(int col, int row, int width, int height, char attr);
-void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr);
 
-/* T-OS Specific */
+/* TUI Extension functions */
+void draw_rect(int col, int row, int width, int height, char attr);
 void draw_fill(int col, int row, int width, int height, char c, char attr);
+void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr);
 void draw_box_rounded(int col, int row, int width, int height, char border_attr, char inner_attr, char title_attr);
+
+/* Low-level Graphics API */
+void put_pixel(int x, int y, uint32_t color);
+uint32_t vga_to_rgb(uint8_t attr);
 
 #endif
