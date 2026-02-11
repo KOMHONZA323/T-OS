@@ -9,6 +9,14 @@ set(BUILD_DIR "${CMAKE_BINARY_DIR}")
 set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/boot.asm")
 set(KERNEL_ENTRY "${CMAKE_SOURCE_DIR}/src/kernel/kernel_entry.asm")
 
+
+# Find all C sources
+file(GLOB_RECURSE KERNEL_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/kernel/*.c"
+    "${CMAKE_SOURCE_DIR}/src/drivers/*.c"
+)
+
+
 set(BOOT_BIN "${BUILD_DIR}/boot.bin")
 set(KERNEL_ENTRY_OBJ "${BUILD_DIR}/kernel_entry.o")
 set(KERNEL_BIN "${BUILD_DIR}/kernel.bin")
@@ -28,6 +36,7 @@ add_custom_command(OUTPUT ${KERNEL_ENTRY_OBJ}
     COMMENT "Assembling Kernel Entry"
 )
 
+
 # 3. Compile Kernel C Sources
 file(GLOB_RECURSE KERNEL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/*.c" "${CMAKE_SOURCE_DIR}/src/drivers/*.c")
 
@@ -39,6 +48,17 @@ foreach(SOURCE_FILE ${KERNEL_SOURCES})
 
     add_custom_command(OUTPUT ${OBJECT_FILE}
         COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -fno-stack-protector -c ${SOURCE_FILE} -o ${OBJECT_FILE}
+=======
+# 3. Compile Kernel Sources
+set(KERNEL_OBJECTS "")
+foreach(SOURCE_FILE ${KERNEL_SOURCES})
+    get_filename_component(FILE_NAME ${SOURCE_FILE} NAME_WE)
+    set(OBJ_FILE "${BUILD_DIR}/${FILE_NAME}.o")
+    list(APPEND KERNEL_OBJECTS ${OBJ_FILE})
+
+    add_custom_command(OUTPUT ${OBJ_FILE}
+        COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -fno-stack-protector -I${CMAKE_SOURCE_DIR}/src/drivers -c ${SOURCE_FILE} -o ${OBJ_FILE}
+
         DEPENDS ${SOURCE_FILE}
         COMMENT "Compiling ${FILE_NAME}"
     )
