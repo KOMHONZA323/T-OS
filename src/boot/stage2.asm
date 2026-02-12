@@ -100,14 +100,9 @@ load_loop:
     pop ax
 
     add bx, 512     ; Advance buffer
-    ; Check 64KB segment wrap?
-    ; 0x1000:0xFFFF -> next is 0x2000:0x0000? No, linear.
-    ; Real mode limit is 64KB offset.
-    ; If BX overflows 0 (wraps), we need to increment ES.
     jnc no_seg_inc
     mov dx, es
-    add dx, 0x1000 ; Add 4KB (64KB / 16) to segment?
-    ; No, 64KB = 0x1000 paragraphs.
+    add dx, 0x1000 
     mov es, dx
 no_seg_inc:
 
@@ -126,33 +121,27 @@ jmp $ ; Should not reach here
 ; ------------------------------------------------------------------
 
 lba_to_chs:
-    ; Input: AX = LBA
-    ; Output: CH = Cyl, DH = Head, CL = Sector
-
     push bx
-    ; Do not push DX, we return value in DH
-
     xor dx, dx
     mov bl, [SECTORS_PER_TRACK]
-    xor bh, bh ; Ensure BH is 0
+    xor bh, bh
     div bx      ; AX = LBA / SPT, DX = LBA % SPT
 
-    inc dx      ; Sector = (LBA % SPT) + 1
-    mov cl, dl  ; CL = Sector
+    inc dx      ; Sector
+    mov cl, dl
 
     xor dx, dx
     mov bl, [HEADS]
     xor bh, bh
     div bx      ; AX = Temp / Heads, DX = Temp % Heads
 
-    mov ch, al  ; Cylinder (Low 8 bits)
+    mov ch, al  ; Cylinder
     mov dh, dl  ; Head
 
     pop bx
     ret
 
 read_config:
-    ; Read last sector (LBA 2879)
     mov ax, 2879
     call lba_to_chs
 
@@ -162,13 +151,11 @@ read_config:
 
     mov ah, 0x02
     mov al, 1
-    ; CH, CL, DH set by lba_to_chs
     mov dl, [BOOT_DRIVE]
     int 0x13
     ret
 
 write_config:
-    ; Write CONFIG_BUFFER to LBA 2879
     mov ax, 2879
     call lba_to_chs
 
@@ -176,9 +163,8 @@ write_config:
     mov es, ax
     mov bx, CONFIG_BUFFER
 
-    mov ah, 0x03 ; Write
+    mov ah, 0x03
     mov al, 1
-    ; CH, CL, DH set by lba_to_chs
     mov dl, [BOOT_DRIVE]
     int 0x13
     ret
@@ -187,11 +173,12 @@ show_menu:
     mov si, MSG_MENU
     call print_string_real
 
-    ; Wait for key
 wait_key:
     mov ah, 0x00
     int 0x16
 
+    cmp al, '0'
+    je sel_auto
     cmp al, '1'
     je sel_720p
     cmp al, '2'
@@ -204,20 +191,23 @@ wait_key:
     je sel_4k
     jmp wait_key
 
-sel_720p:
+sel_auto:
     mov byte [SELECTED_RES], 0
     jmp menu_done
-sel_1080p:
+sel_720p:
     mov byte [SELECTED_RES], 1
     jmp menu_done
-sel_1440p:
+sel_1080p:
     mov byte [SELECTED_RES], 2
     jmp menu_done
-sel_1920p:
+sel_1440p:
     mov byte [SELECTED_RES], 3
     jmp menu_done
-sel_4k:
+sel_1920p:
     mov byte [SELECTED_RES], 4
+    jmp menu_done
+sel_4k:
+    mov byte [SELECTED_RES], 5
 
 menu_done:
     ; Update Config Buffer
@@ -237,54 +227,62 @@ set_vbe_mode:
     cmp ax, 0x004F
     jne vbe_error
 
-    ; 2. Iterate modes to find best match
-    ; VideoPtr is at VBE_INFO_BLOCK + 14 (DWORD)
+    ; Setup iterator
     mov ax, [VBE_INFO_BLOCK + 14]
     mov fs, [VBE_INFO_BLOCK + 16] ; Segment
     mov si, ax                    ; Offset
 
-    ; Target Width/Height
+    ; Check Selection
     mov al, [SELECTED_RES]
     cmp al, 0
-    je target_720p
+    je find_best_mode ; Auto Detect
     cmp al, 1
-    je target_1080p
+    je target_720p
     cmp al, 2
-    je target_1440p
+    je target_1080p
     cmp al, 3
-    je target_1920p
+    je target_1440p
     cmp al, 4
+    je target_1920p
+    cmp al, 5
     je target_4k
 
 target_720p:
     mov cx, 1280
     mov dx, 720
-    jmp find_mode
+    jmp find_specific_mode
 target_1080p:
     mov cx, 1920
     mov dx, 1080
-    jmp find_mode
+    jmp find_specific_mode
 target_1440p:
     mov cx, 2560
     mov dx, 1440
-    jmp find_mode
+    jmp find_specific_mode
 target_1920p:
     mov cx, 2560
     mov dx, 1920
-    jmp find_mode
+    jmp find_specific_mode
 target_4k:
     mov cx, 3840
     mov dx, 2160
-    jmp find_mode
+    jmp find_specific_mode
 
-find_mode:
-    ; CX = Width, DX = Height
-    ; Loop through FS:SI
-next_mode:
-    mov bx, [fs:si]
+; ---------------------------------------------------
+; AUTO DETECT MODE (Highest Res 32bpp)
+; ---------------------------------------------------
+find_best_mode:
+    ; Variables: BX (Best Mode #), CX (Best Width), DX (Best Height)
+    xor bx, bx
+    xor cx, cx
+    xor dx, dx
+
+.scan_loop:
+    push bx ; Save best mode number
+    mov bx, [fs:si] ; Get next mode from list
     add si, 2
     cmp bx, 0xFFFF
-    je vbe_error ; End of list, mode not found
+    je .scan_done
 
     ; Get Mode Info
     push cx
@@ -292,7 +290,7 @@ next_mode:
     push si
     push fs
 
-    mov cx, bx ; Mode number
+    mov cx, bx
     or cx, 0x4000 ; LFB
     mov ax, 0x4F01
     mov di, MODE_INFO_BLOCK
@@ -302,35 +300,112 @@ next_mode:
     pop si
     pop dx
     pop cx
+    pop ax ; This is the 'best mode' we pushed as BX. Pop into AX temp.
 
-    cmp ax, 0x004F
-    jne next_mode
+    cmp byte [MODE_INFO_BLOCK + 25], 32 ; Check BPP
+    jne .restore_and_next
 
-    ; Check Width (Offset 18)
-    mov ax, [MODE_INFO_BLOCK + 18]
-    cmp ax, cx
-    jne next_mode
+    ; Check Resolution
+    mov bx, [MODE_INFO_BLOCK + 18] ; Width
+    cmp bx, cx
+    jb .restore_and_next ; Current < Best
+    ja .new_best         ; Current > Best
 
-    ; Check Height (Offset 20)
-    mov ax, [MODE_INFO_BLOCK + 20]
-    cmp ax, dx
-    jne next_mode
+    ; If Widths equal, check height
+    mov bx, [MODE_INFO_BLOCK + 20] ; Height
+    cmp bx, dx
+    jbe .restore_and_next
 
-    ; Check BPP (Offset 25)
-    mov al, [MODE_INFO_BLOCK + 25]
-    cmp al, 32
-    jne next_mode
+.new_best:
+    ; Found better mode
+    mov cx, [MODE_INFO_BLOCK + 18] ; Update Best Width
+    mov dx, [MODE_INFO_BLOCK + 20] ; Update Best Height
+    mov bx, [fs:si-2]              ; Update Best Mode ID
+    jmp .scan_loop
 
-    ; Found it! Set mode.
-    mov bx, [fs:si-2] ; Retrieve mode number
-    or bx, 0x4000     ; Enable LFB
+.restore_and_next:
+    mov bx, ax ; Restore best mode back to BX
+    jmp .scan_loop
+
+.scan_done:
+    pop bx ; Just to balance the push at start of .scan_loop before jump
+           ; Actually logic is tricky: .scan_loop pushes BX. 
+           ; .scan_done jumps out. We need to pop the BX that was pushed at start of .scan_loop.
+           ; Wait, the jump to .scan_done happens immediately after fetch.
+           ; "push bx" happens AT START of loop.
+           ; If we jump, stack has one BX pushed.
+           ; So yes, pop bx. This BX is the best mode found so far.
+
+    cmp bx, 0
+    je vbe_error ; No suitable mode found
+
+    ; Set the best mode
+    push bx ; Save mode number
+    or bx, 0x4000
     mov ax, 0x4F02
     int 0x10
-    cmp ax, 0x004F
-    jne vbe_error
+    pop bx ; Restore mode number for info query
+    
+    ; Refresh Info Block for the chosen mode (since we scanned past it)
+    mov cx, bx
+    or cx, 0x4000
+    mov ax, 0x4F01
+    mov di, MODE_INFO_BLOCK
+    int 0x10
+    
+    jmp save_mode_info
 
-    ; Save Info for Kernel
-    ; Copy relevant data to 0x5000
+; ---------------------------------------------------
+; SPECIFIC MODE SEARCH
+; ---------------------------------------------------
+find_specific_mode:
+    ; CX = Target Width, DX = Target Height
+next_specific:
+    mov bx, [fs:si]
+    add si, 2
+    cmp bx, 0xFFFF
+    je vbe_error
+
+    push cx
+    push dx
+    push si
+    push fs
+
+    mov cx, bx
+    or cx, 0x4000
+    mov ax, 0x4F01
+    mov di, MODE_INFO_BLOCK
+    int 0x10
+
+    pop fs
+    pop si
+    pop dx
+    pop cx
+
+    ; Check Width
+    mov ax, [MODE_INFO_BLOCK + 18]
+    cmp ax, cx
+    jne next_specific
+
+    ; Check Height
+    mov ax, [MODE_INFO_BLOCK + 20]
+    cmp ax, dx
+    jne next_specific
+
+    ; Check BPP
+    mov al, [MODE_INFO_BLOCK + 25]
+    cmp al, 32
+    jne next_specific
+
+    ; Found
+    mov bx, [fs:si-2]
+    or bx, 0x4000
+    mov ax, 0x4F02
+    int 0x10
+    
+    ; Fall through to save info
+
+save_mode_info:
     mov ax, 0
     mov es, ax
     mov di, 0x5000
@@ -341,9 +416,17 @@ next_mode:
     mov [es:di+2], ax
     mov al, [MODE_INFO_BLOCK + 25] ; BPP
     mov [es:di+4], al
-    mov ax, [MODE_INFO_BLOCK + 16] ; Pitch (Bytes per scanline)
+
+    ; --- PITCH CORRECTION ---
+    mov ax, [MODE_INFO_BLOCK + 50] ; LinBytesPerScanLine
+    cmp ax, 0
+    jne use_lin_pitch
+    mov ax, [MODE_INFO_BLOCK + 16] ; BytesPerScanLine
+use_lin_pitch:
     mov [es:di+5], ax
-    mov eax, [MODE_INFO_BLOCK + 40] ; Framebuffer (Phys Addr)
+    ; ------------------------
+
+    mov eax, [MODE_INFO_BLOCK + 40] ; Framebuffer
     mov [es:di+7], eax
 
     ret
@@ -374,9 +457,10 @@ BOOT_DRIVE db 0
 SELECTED_RES db 0
 SECTORS_PER_TRACK db 18
 HEADS db 2
-MSG_MENU db "Select Resolution:", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, "4. 1920p", 13, 10, "5. 4K", 13, 10, 0
-MSG_VBE_ERR db "VBE Error or Resolution Not Supported!", 0
-MSG_DISK_ERR db "Disk Read Error!", 0
+; Updated Menu
+MSG_MENU db "Select Resolution:", 13, 10, "0. Auto (Best)", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, "4. 1920p", 13, 10, "5. 4K", 13, 10, 0
+MSG_VBE_ERR db "VBE Error!", 0
+MSG_DISK_ERR db "Disk Error!", 0
 
 ; Buffers
 CONFIG_BUFFER:
@@ -395,8 +479,6 @@ MODE_INFO_BLOCK equ 0x3000
 BEGIN_PM:
     mov ebx, MSG_PROT_MODE
     call print_string_pm
-
-    ; Jump to Kernel (0x10000)
     call 0x10000
     jmp $
 
