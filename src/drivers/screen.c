@@ -6,6 +6,9 @@
 ScreenInfo *screen_info = (ScreenInfo*)0x5000;
 uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
 uint32_t *g_framebuffer = 0;
+/* Double Buffering: Back Buffer at 16MB mark */
+static uint32_t *back_buffer = (uint32_t*)0x1000000;
+
 int g_width = 0;
 int g_height = 0;
 int g_pitch = 0;
@@ -61,11 +64,11 @@ void init_screen() {
 }
 
 void clear_screen() {
-    // Fill with Black
-    // Optimized: assume 32-bit aligned framebuffer
+    // Fill Back Buffer with Black
     int size = g_width * g_height;
+    // Assuming 32-bit aligned back buffer
     for (int i = 0; i < size; i++) {
-        g_framebuffer[i] = 0xFF000000;
+        back_buffer[i] = 0xFF000000;
     }
     cursor_x = 0;
     cursor_y = 0;
@@ -73,16 +76,32 @@ void clear_screen() {
 
 void put_pixel(int x, int y, uint32_t color) {
     if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
-    // Calculate offset: y * pitch + x * (bpp/8)
-    // Assuming 32 bpp
-    // g_pitch is in bytes. g_framebuffer is uint32_t*.
-    // We need byte offset then cast.
 
-    // Optimization: Since g_framebuffer is uint32_t*, we can index by pixels ONLY IF pitch == width * 4.
-    // VBE pitch might include padding. So always use pitch.
+    // Write to Back Buffer (Linear 32-bit)
+    back_buffer[y * g_width + x] = color;
+}
 
-    uint8_t *pixel_addr = (uint8_t*)g_framebuffer + (y * g_pitch) + (x * 4);
-    *(uint32_t*)pixel_addr = color;
+uint32_t get_pixel(int x, int y) {
+    if (x < 0 || x >= g_width || y < 0 || y >= g_height) return 0;
+    return back_buffer[y * g_width + x];
+}
+
+void swap_buffers() {
+    // Copy Back Buffer to Front Buffer (VBE)
+    // Handle VBE pitch (padding)
+    int row_size_bytes = g_width * 4; // 32 bpp = 4 bytes
+
+    if (g_pitch == row_size_bytes) {
+         // Fast path
+         memory_copy((char*)back_buffer, (char*)g_framebuffer, g_width * g_height * 4);
+    } else {
+         // Copy row by row
+         for (int y = 0; y < g_height; y++) {
+             char *src = (char*)back_buffer + (y * row_size_bytes);
+             char *dst = (char*)g_framebuffer + (y * g_pitch);
+             memory_copy(src, dst, row_size_bytes);
+         }
+    }
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -153,27 +172,19 @@ void kprint_backspace() {
 }
 
 void scroll_screen() {
-    // Scroll up 16 pixels (one row)
-    // Copy (Height - 16) lines from y=16 to y=0
-    int bytes_per_line = g_pitch;
+    // Scroll up 16 pixels (one row) on Back Buffer
+    int bytes_per_line = g_width * 4; // Back buffer is packed
     int copy_size = (g_height - 16) * bytes_per_line;
 
-    // Source: line 16 (offset 16 * pitch)
+    // Source: line 16
     // Dest: line 0
-    uint8_t *src = (uint8_t*)g_framebuffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_framebuffer;
+    uint32_t *src = back_buffer + (16 * g_width);
+    uint32_t *dst = back_buffer;
 
     memory_copy((char*)src, (char*)dst, copy_size);
 
     // Clear last line (16 pixels high)
-    // Offset: (Height - 16) * pitch
-    uint8_t *last_line = (uint8_t*)g_framebuffer + ((g_height - 16) * bytes_per_line);
-    // Fill with black
-    // Using memory_set, but for 32-bit color 0 is transparent/black?
-    // ARGB 0x00000000 is transparent black?
-    // ARGB 0xFF000000 is opaque black.
-    // If I use 0, it might be fine.
-    // For TUI, let's assume 0 is black.
+    uint32_t *last_line = back_buffer + ((g_height - 16) * g_width);
     memory_set((char*)last_line, 0, 16 * bytes_per_line);
 }
 
@@ -182,8 +193,6 @@ void scroll_screen() {
 void draw_rect(int col, int row, int width, int height, char attr) {
     // Clear chars in this rect with bg color
     uint32_t bg = vga_palette[(attr >> 4) & 0x0F];
-    // We only fill background?
-    // Actually draw_rect usually clears the area.
 
     int x_start = col * 8;
     int y_start = row * 16;
@@ -209,8 +218,6 @@ void draw_fill(int col, int row, int width, int height, char c, char attr) {
 }
 
 void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr) {
-     // Naive implementation using chars
-     // Top/Bottom
      uint32_t b_fg = vga_palette[border_attr & 0x0F];
      uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
@@ -255,11 +262,122 @@ void draw_box_rounded(int col, int row, int width, int height, char border_attr,
     draw_char(191, (col + width - 1) * 8, row * 16, b_fg, b_bg); // TR
     draw_char(192, col * 8, (row + height - 1) * 16, b_fg, b_bg); // BL
     draw_char(217, (col + width - 1) * 8, (row + height - 1) * 16, b_fg, b_bg); // BR
-
-    // Title bar area?
-    // Already handled by caller filling title text.
 }
 
-uint32_t vga_to_rgb(uint8_t attr) {
-    return vga_palette[attr & 0x0F];
+/* Modern Graphics API */
+
+// Helper for abs
+static int abs(int v) { return v < 0 ? -v : v; }
+
+void draw_rect_px(int x, int y, int w, int h, uint32_t color) {
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            put_pixel(x + j, y + i, color);
+        }
+    }
+}
+
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    for (;;) {
+        put_pixel(x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+void draw_circle(int xc, int yc, int r, uint32_t color) {
+    int x = 0, y = r;
+    int d = 3 - 2 * r;
+    while (y >= x) {
+        put_pixel(xc + x, yc + y, color);
+        put_pixel(xc - x, yc + y, color);
+        put_pixel(xc + x, yc - y, color);
+        put_pixel(xc - x, yc - y, color);
+        put_pixel(xc + y, yc + x, color);
+        put_pixel(xc - y, yc + x, color);
+        put_pixel(xc + y, yc - x, color);
+        put_pixel(xc - y, yc - x, color);
+        x++;
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        } else {
+            d = d + 4 * x + 6;
+        }
+    }
+}
+
+void draw_fill_circle(int xc, int yc, int r, uint32_t color) {
+    int x = 0, y = r;
+    int d = 3 - 2 * r;
+    while (y >= x) {
+        // Draw horizontal lines
+        for (int i = xc - x; i <= xc + x; i++) {
+            put_pixel(i, yc + y, color);
+            put_pixel(i, yc - y, color);
+        }
+        for (int i = xc - y; i <= xc + y; i++) {
+            put_pixel(i, yc + x, color);
+            put_pixel(i, yc - x, color);
+        }
+        x++;
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        } else {
+            d = d + 4 * x + 6;
+        }
+    }
+}
+
+void draw_rounded_rect(int x, int y, int w, int h, int r, uint32_t color) {
+    // 1. Draw 4 Corner filled circles
+    draw_fill_circle(x + r, y + r, r, color);
+    draw_fill_circle(x + w - r - 1, y + r, r, color);
+    draw_fill_circle(x + r, y + h - r - 1, r, color);
+    draw_fill_circle(x + w - r - 1, y + h - r - 1, r, color);
+
+    // 2. Draw Center Rects
+    // Vertical Center Rect (between top and bottom circles)
+    draw_rect_px(x + r, y, w - 2 * r, h, color);
+    // Left Rect (between TL and BL)
+    draw_rect_px(x, y + r, r, h - 2 * r, color);
+    // Right Rect (between TR and BR)
+    draw_rect_px(x + w - r, y + r, r, h - 2 * r, color);
+}
+
+void draw_rect_alpha(int x, int y, int w, int h, uint32_t color, uint8_t alpha) {
+    uint32_t src_r = (color >> 16) & 0xFF;
+    uint32_t src_g = (color >> 8) & 0xFF;
+    uint32_t src_b = (color) & 0xFF;
+
+    uint32_t a = alpha;
+    uint32_t inv_a = 255 - a;
+
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            int px = x + j;
+            int py = y + i;
+            if (px < 0 || px >= g_width || py < 0 || py >= g_height) continue;
+
+            uint32_t dst = get_pixel(px, py);
+            uint32_t dst_r = (dst >> 16) & 0xFF;
+            uint32_t dst_g = (dst >> 8) & 0xFF;
+            uint32_t dst_b = (dst) & 0xFF;
+
+            // Blend
+            uint32_t out_r = (src_r * a + dst_r * inv_a) / 255;
+            uint32_t out_g = (src_g * a + dst_g * inv_a) / 255;
+            uint32_t out_b = (src_b * a + dst_b * inv_a) / 255;
+
+            uint32_t out_color = (0xFF << 24) | (out_r << 16) | (out_g << 8) | out_b;
+            put_pixel(px, py, out_color);
+        }
+    }
 }
