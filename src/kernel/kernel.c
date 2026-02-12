@@ -68,12 +68,10 @@ void kernel_main(void) {
         if (show_settings) {
             open_settings();
         }
-
-        // Swap Buffers (Double Buffering)
         swap_buffers();
 
         // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
-        // delay(100);
+        delay(1000);
     }
 }
 
@@ -94,7 +92,7 @@ void draw_interface() {
         // Or show them behind.
 
         // C Code Editor
-        draw_window(3, 4, 38, 14, " kernel.c ",
+        draw_window(10, 4, 34, 14, " kernel.c ",
             "void main() {\n"
             "  // T-OS Kernel\n"
             "  init_video();\n"
@@ -103,7 +101,7 @@ void draw_interface() {
             "}");
 
         // Terminal
-        draw_window(44, 7, 32, 11, " Terminal ",
+        draw_window(46, 7, 32, 11, " Terminal ",
             "$ make\n"
             "[OK] Kernel built.\n"
             "[OK] Bootloader.\n"

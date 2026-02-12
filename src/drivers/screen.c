@@ -6,16 +6,7 @@
 ScreenInfo *screen_info = (ScreenInfo*)0x5000;
 uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
 uint32_t *g_framebuffer = 0;
-uint32_t *g_backbuffer = (uint32_t*)0x1000000; // 16MB
 
-int g_width = 0; // Virtual Width
-int g_height = 0; // Virtual Height
-int g_pitch = 0; // Virtual Pitch (g_width * 4)
-int g_bpp = 32;
-
-int phys_width = 0;
-int phys_height = 0;
-int phys_pitch = 0;
 
 /* Current cursor position */
 int cursor_x = 0;
@@ -131,15 +122,25 @@ void clear_screen() {
     // Fill with Black (Backbuffer)
     int size = g_width * g_height;
     for (int i = 0; i < size; i++) {
-        g_backbuffer[i] = 0xFF000000;
     }
     cursor_x = 0;
     cursor_y = 0;
 }
 
+void swap_buffers() {
+    // Copy back buffer to front buffer
+    // Optimize: 32-bit copy
+    int size_dwords = (g_height * g_pitch) / 4;
+
+    // We use a simple loop as we don't have memcpy optimized for 32-bit
+    // Also, g_framebuffer is in VRAM, writing might be slower, but that's expected.
+    for (int i = 0; i < size_dwords; i++) {
+        g_framebuffer[i] = g_back_buffer[i];
+    }
+}
+
 void put_pixel(int x, int y, uint32_t color) {
     if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
-    g_backbuffer[y * g_width + x] = color;
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -214,15 +215,6 @@ void scroll_screen() {
     // g_pitch is now g_width * 4
     int bytes_per_line = g_pitch;
     int copy_size = (g_height - 16) * bytes_per_line;
-
-    // Source: line 16
-    uint8_t *src = (uint8_t*)g_backbuffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_backbuffer;
-
-    memory_copy((char*)src, (char*)dst, copy_size);
-
-    // Clear last line
-    uint8_t *last_line = (uint8_t*)g_backbuffer + ((g_height - 16) * bytes_per_line);
     memory_set((char*)last_line, 0, 16 * bytes_per_line);
 }
 
