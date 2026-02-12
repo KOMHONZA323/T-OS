@@ -59,6 +59,20 @@ void kernel_main(void) {
                 config[1] = 2;    // 1440p
                 ata_write_sector(2879, config);
                 port_byte_out(0x64, 0xFE);
+            } else if (c == '4') {
+                // 1920p (2560x1920)
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 3;    // 1920p
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
+            } else if (c == '5') {
+                // 4K (2160p)
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 4;    // 4K
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
             }
         }
 
@@ -207,7 +221,9 @@ void open_settings() {
         "Resolution Selection:\n\n"
         "Press '1': 1280x720 (HD)\n"
         "Press '2': 1920x1080 (FHD)\n"
-        "Press '3': 2560x1440 (QHD)\n\n"
+        "Press '3': 2560x1440 (QHD)\n"
+        "Press '4': 2560x1920 (1920p)\n"
+        "Press '5': 3840x2160 (4K)\n\n"
         "System will reboot automatically.");
 }
 
