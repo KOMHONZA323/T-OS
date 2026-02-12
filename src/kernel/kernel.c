@@ -72,7 +72,7 @@ void kernel_main(void) {
         swap_buffers();
 
         // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
-        // delay(100);
+        delay(1000);
     }
 }
 
