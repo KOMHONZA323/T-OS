@@ -10,6 +10,7 @@ typedef struct {
     uint8_t bpp;
     uint16_t pitch;
     uint32_t framebuffer;
+    uint8_t requested_res;
 } __attribute__((packed)) ScreenInfo;
 
 // Colors (ARGB 8888)

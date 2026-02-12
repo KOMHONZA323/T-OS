@@ -85,6 +85,43 @@ void init_screen() {
   clear_screen();
 }
 
+void swap_buffers() {
+    if (g_width == phys_width && g_height == phys_height) {
+        // Direct Copy
+        // We need to copy line by line if pitch differs, but usually...
+        // Backbuffer pitch is g_width*4.
+        // Phys pitch is phys_pitch.
+        // Copy height lines.
+        uint8_t* src = (uint8_t*)g_backbuffer;
+        uint8_t* dst = (uint8_t*)g_framebuffer;
+        int row_bytes = g_width * 4;
+
+        for (int y = 0; y < g_height; y++) {
+            memory_copy((char*)src, (char*)dst, row_bytes);
+            src += row_bytes;
+            dst += phys_pitch;
+        }
+    } else {
+        // Scaling (Nearest Neighbor)
+        for (int y = 0; y < phys_height; y++) {
+            // Map physical y to virtual y
+            int v_y = (y * g_height) / phys_height;
+            if (v_y >= g_height) v_y = g_height - 1;
+
+            uint32_t *src_row = g_backbuffer + (v_y * g_width);
+            uint8_t *dst_row = (uint8_t*)g_framebuffer + (y * phys_pitch);
+
+            for (int x = 0; x < phys_width; x++) {
+                 int v_x = (x * g_width) / phys_width;
+                 if (v_x >= g_width) v_x = g_width - 1;
+
+                 uint32_t color = src_row[v_x];
+                 *(uint32_t*)(dst_row + x * 4) = color;
+            }
+        }
+    }
+}
+
 void clear_screen() {
 
   for (int y = 0; y < g_height; y++) {

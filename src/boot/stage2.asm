@@ -247,7 +247,7 @@ set_vbe_mode:
     cmp al, 5
     je target_4k
 
-target_720p:
+try_720p:
     mov cx, 1280
     mov dx, 720
     jmp find_specific_mode
@@ -429,6 +429,10 @@ use_lin_pitch:
     mov eax, [MODE_INFO_BLOCK + 40] ; Framebuffer
     mov [es:di+7], eax
 
+.not_found:
+.vbe_call_failed:
+    popa
+    stc ; Set Carry = Failure
     ret
 
 vbe_error:
