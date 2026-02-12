@@ -29,6 +29,9 @@
 #define TOP_BAR_BG ((BLACK << 4) | LIGHT_GREY)
 #define TOP_BAR_TEXT_ATTR ((BLACK << 4) | WHITE)
 
+// Hex color for px drawing functions
+#define COLOR_TOP_BAR_TEXT 0xFFFFFFFF
+
 #define TASKBAR_CHAR 0xDB
 #define TASKBAR_ATTR ((BLACK << 4) | DARK_GREY)
 #define TASKBAR_TEXT_ATTR ((BLACK << 4) | WHITE)
