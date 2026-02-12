@@ -59,6 +59,20 @@ void kernel_main(void) {
                 config[1] = 2;    // 1440p
                 ata_write_sector(2879, config);
                 port_byte_out(0x64, 0xFE);
+            } else if (c == '4') {
+                // 1920p (2560x1920)
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 3;    // 1920p
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
+            } else if (c == '5') {
+                // 4K (2160p)
+                uint8_t config[512] = {0};
+                config[0] = 0xAB; // Magic
+                config[1] = 4;    // 4K
+                ata_write_sector(2879, config);
+                port_byte_out(0x64, 0xFE);
             }
         }
 
@@ -69,8 +83,10 @@ void kernel_main(void) {
             open_settings();
         }
 
+        swap_buffers();
+
         // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
-        // delay(100);
+        delay(1000);
     }
 }
 
@@ -91,8 +107,8 @@ void draw_interface() {
         // Or show them behind.
 
         // C Code Editor
-        draw_window(3, 4, 38, 14, " kernel.c ",
-            "void main() {\n"
+        draw_window(10, 4, 34, 14, " kernel.c ",
+            "void kernel_main() {\n"
             "  // T-OS Kernel\n"
             "  init_video();\n"
             "  kprint(\"Hello\");\n"
@@ -100,7 +116,7 @@ void draw_interface() {
             "}");
 
         // Terminal
-        draw_window(44, 7, 32, 11, " Terminal ",
+        draw_window(46, 7, 32, 11, " Terminal ",
             "$ make\n"
             "[OK] Kernel built.\n"
             "[OK] Bootloader.\n"
@@ -139,10 +155,11 @@ void draw_top_bar() {
     kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
 
     // Center: Clock
-    kprint_at_attr(" Oct 25 12:00 ", 35, 0, WIN_ACCENT_ATTR);
+    int clock_x = (MAX_COLS / 2) - 7;
+    kprint_at_attr(" Oct 25 12:00 ", clock_x, 0, TOP_BAR_TEXT_ATTR);
 
     // Right: Status Icons
-    kprint_at_attr(" WF BT PW ", 70, 0, TOP_BAR_TEXT_ATTR);
+    kprint_at_attr(" WF  BT  PW ", MAX_COLS - 14, 0, TOP_BAR_TEXT_ATTR);
 }
 
 void draw_bottom_bar() {
@@ -156,7 +173,7 @@ void draw_bottom_bar() {
     kprint_at_attr(" [T] ", 1, y_start + 1, WIN_ACCENT_ATTR);
 
     // Centered Apps
-    int center = 30;
+    int center = (MAX_COLS / 2) - 8;
     kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
 
     // Active line
@@ -166,7 +183,7 @@ void draw_bottom_bar() {
     kprint_at_attr(" [Term] ", center + 10, y_start + 1, WIN_CONTENT_ATTR);
 
     // System Tray
-    kprint_at_attr(" ^  ENG  12:00 ", 65, y_start + 1, WIN_CONTENT_ATTR);
+    kprint_at_attr(" ^  ENG  12:00 ", MAX_COLS - 16, y_start + 1, WIN_CONTENT_ATTR);
 }
 
 void draw_window(int x, int y, int w, int h, const char* title, const char* content) {
@@ -205,7 +222,9 @@ void open_settings() {
         "Resolution Selection:\n\n"
         "Press '1': 1280x720 (HD)\n"
         "Press '2': 1920x1080 (FHD)\n"
-        "Press '3': 2560x1440 (QHD)\n\n"
+        "Press '3': 2560x1440 (QHD)\n"
+        "Press '4': 2560x1920 (1920p)\n"
+        "Press '5': 3840x2160 (4K)\n\n"
         "System will reboot automatically.");
 }
 
@@ -226,6 +245,7 @@ void draw_loading_screen() {
     for (int i = 0; i < bar_width; i++) {
         char progress[2] = { '=', 0 };
         kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+        swap_buffers();
         delay(3000);
     }
 

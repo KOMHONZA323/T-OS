@@ -29,8 +29,8 @@
  */
 
 /* Background Fill */
-#define WALLPAPER_CHAR 0xB0 // Light shade
-#define WALLPAPER_ATTR ((BLACK << 4) | DARK_GREY) // Dark Grey on Black
+#define WALLPAPER_CHAR ' ' // Clear
+#define WALLPAPER_ATTR ((BLACK << 4) | BLACK) // Solid Black
 
 /* Top Bar (Translucent Black -> Black BG) */
 #define TOP_BAR_BG ((BLACK << 4) | LIGHT_GREY)
@@ -49,9 +49,9 @@
 #define TASKBAR_BG_ATTR ((BLACK << 4) | LIGHT_GREY)
 
 /* Windows */
-#define WIN_BORDER_ATTR ((BLACK << 4) | DARK_GREY) // Deep Charcoal Border
-#define WIN_TITLE_ATTR ((BLACK << 4) | WHITE)
-#define WIN_CONTENT_ATTR ((BLACK << 4) | LIGHT_GREY) // Surface color
-#define WIN_ACCENT_ATTR ((BLACK << 4) | LIGHT_BLUE)
+#define WIN_BORDER_ATTR ((DARK_GREY << 4) | LIGHT_GREY) // Light Grey on Dark Grey
+#define WIN_TITLE_ATTR ((DARK_GREY << 4) | WHITE)
+#define WIN_CONTENT_ATTR ((DARK_GREY << 4) | LIGHT_GREY) // Solid Dark Grey BG
+#define WIN_ACCENT_ATTR ((DARK_GREY << 4) | LIGHT_CYAN)
 
 #endif

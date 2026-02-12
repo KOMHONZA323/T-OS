@@ -198,6 +198,10 @@ wait_key:
     je sel_1080p
     cmp al, '3'
     je sel_1440p
+    cmp al, '4'
+    je sel_1920p
+    cmp al, '5'
+    je sel_4k
     jmp wait_key
 
 sel_720p:
@@ -208,6 +212,12 @@ sel_1080p:
     jmp menu_done
 sel_1440p:
     mov byte [SELECTED_RES], 2
+    jmp menu_done
+sel_1920p:
+    mov byte [SELECTED_RES], 3
+    jmp menu_done
+sel_4k:
+    mov byte [SELECTED_RES], 4
 
 menu_done:
     ; Update Config Buffer
@@ -241,6 +251,10 @@ set_vbe_mode:
     je target_1080p
     cmp al, 2
     je target_1440p
+    cmp al, 3
+    je target_1920p
+    cmp al, 4
+    je target_4k
 
 target_720p:
     mov cx, 1280
@@ -253,6 +267,14 @@ target_1080p:
 target_1440p:
     mov cx, 2560
     mov dx, 1440
+    jmp find_mode
+target_1920p:
+    mov cx, 2560
+    mov dx, 1920
+    jmp find_mode
+target_4k:
+    mov cx, 3840
+    mov dx, 2160
     jmp find_mode
 
 find_mode:
@@ -352,7 +374,7 @@ BOOT_DRIVE db 0
 SELECTED_RES db 0
 SECTORS_PER_TRACK db 18
 HEADS db 2
-MSG_MENU db "Select Resolution:", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, 0
+MSG_MENU db "Select Resolution:", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, "4. 1920p", 13, 10, "5. 4K", 13, 10, 0
 MSG_VBE_ERR db "VBE Error or Resolution Not Supported!", 0
 MSG_DISK_ERR db "Disk Read Error!", 0
 

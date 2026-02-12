@@ -6,6 +6,7 @@
 ScreenInfo *screen_info = (ScreenInfo*)0x5000;
 uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
 uint32_t *g_framebuffer = 0;
+uint32_t *g_back_buffer = (uint32_t*)0x1000000; // 16MB Mark
 int g_width = 0;
 int g_height = 0;
 int g_pitch = 0;
@@ -65,10 +66,22 @@ void clear_screen() {
     // Optimized: assume 32-bit aligned framebuffer
     int size = g_width * g_height;
     for (int i = 0; i < size; i++) {
-        g_framebuffer[i] = 0xFF000000;
+        g_back_buffer[i] = 0xFF000000;
     }
     cursor_x = 0;
     cursor_y = 0;
+}
+
+void swap_buffers() {
+    // Copy back buffer to front buffer
+    // Optimize: 32-bit copy
+    int size_dwords = (g_height * g_pitch) / 4;
+
+    // We use a simple loop as we don't have memcpy optimized for 32-bit
+    // Also, g_framebuffer is in VRAM, writing might be slower, but that's expected.
+    for (int i = 0; i < size_dwords; i++) {
+        g_framebuffer[i] = g_back_buffer[i];
+    }
 }
 
 void put_pixel(int x, int y, uint32_t color) {
@@ -81,7 +94,7 @@ void put_pixel(int x, int y, uint32_t color) {
     // Optimization: Since g_framebuffer is uint32_t*, we can index by pixels ONLY IF pitch == width * 4.
     // VBE pitch might include padding. So always use pitch.
 
-    uint8_t *pixel_addr = (uint8_t*)g_framebuffer + (y * g_pitch) + (x * 4);
+    uint8_t *pixel_addr = (uint8_t*)g_back_buffer + (y * g_pitch) + (x * 4);
     *(uint32_t*)pixel_addr = color;
 }
 
@@ -160,14 +173,14 @@ void scroll_screen() {
 
     // Source: line 16 (offset 16 * pitch)
     // Dest: line 0
-    uint8_t *src = (uint8_t*)g_framebuffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_framebuffer;
+    uint8_t *src = (uint8_t*)g_back_buffer + (16 * bytes_per_line);
+    uint8_t *dst = (uint8_t*)g_back_buffer;
 
     memory_copy((char*)src, (char*)dst, copy_size);
 
     // Clear last line (16 pixels high)
     // Offset: (Height - 16) * pitch
-    uint8_t *last_line = (uint8_t*)g_framebuffer + ((g_height - 16) * bytes_per_line);
+    uint8_t *last_line = (uint8_t*)g_back_buffer + ((g_height - 16) * bytes_per_line);
     // Fill with black
     // Using memory_set, but for 32-bit color 0 is transparent/black?
     // ARGB 0x00000000 is transparent black?
