@@ -6,7 +6,7 @@
 ScreenInfo *screen_info = (ScreenInfo *)0x5000;
 uint8_t *g_font = (uint8_t *)0xA000;             // BIOS Font 8x16
 uint32_t *g_framebuffer = 0; // VRAM Pointer
-uint32_t *g_back_buffer = 0; // Rendering buffer (defaults to VRAM)
+uint32_t *g_back_buffer = (uint32_t *)0x2000000; // 32MB Mark (Back Buffer)
 
 /* Dimensions */
 int g_width = 0;
@@ -73,10 +73,10 @@ void init_screen() {
   MAX_COLS = g_width / 8;
   MAX_ROWS = g_height / 16;
 
-  // Use direct rendering into VRAM to avoid corruption from assuming a fixed
-  // back-buffer address/size at high resolutions (e.g. 4K).
-  g_back_buffer = g_framebuffer;
-  g_logical_pitch = g_pitch;
+  // Keep a separate back buffer to prevent visible flicker/tearing.
+  // 0x02000000 leaves enough room for 4K RGBA frame copies on common QEMU RAM
+  // sizes while avoiding the old 16MB overflow.
+  g_back_buffer = (uint32_t *)0x2000000;
 
   // Reset cursor
   cursor_x = 0;
@@ -98,10 +98,6 @@ void clear_screen() {
 }
 
 void swap_buffers() {
-  // No-op when drawing directly into VRAM.
-  if (g_back_buffer == g_framebuffer)
-    return;
-
   uint8_t *src_ptr = (uint8_t *)g_back_buffer;
   uint8_t *dst_ptr = (uint8_t *)g_framebuffer;
 
