@@ -54,6 +54,7 @@ extern int MAX_ROWS;
 
 /* Public kernel API */
 void init_screen();
+void swap_buffers();
 void clear_screen();
 void kprint_at(char *message, int col, int row);
 void kprint_at_attr(char *message, int col, int row, char attr);

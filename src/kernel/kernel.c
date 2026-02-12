@@ -69,6 +69,8 @@ void kernel_main(void) {
             open_settings();
         }
 
+        swap_buffers();
+
         // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
         // delay(100);
     }
@@ -226,6 +228,7 @@ void draw_loading_screen() {
     for (int i = 0; i < bar_width; i++) {
         char progress[2] = { '=', 0 };
         kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+        swap_buffers();
         delay(3000);
     }
 
