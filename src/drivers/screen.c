@@ -6,10 +6,16 @@
 ScreenInfo *screen_info = (ScreenInfo*)0x5000;
 uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
 uint32_t *g_framebuffer = 0;
-int g_width = 0;
-int g_height = 0;
-int g_pitch = 0;
-int g_bpp = 0;
+uint32_t *g_backbuffer = (uint32_t*)0x1000000; // 16MB
+
+int g_width = 0; // Virtual Width
+int g_height = 0; // Virtual Height
+int g_pitch = 0; // Virtual Pitch (g_width * 4)
+int g_bpp = 32;
+
+int phys_width = 0;
+int phys_height = 0;
+int phys_pitch = 0;
 
 /* Current cursor position */
 int cursor_x = 0;
@@ -44,11 +50,35 @@ void scroll_screen();
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
 
 void init_screen() {
-    g_width = screen_info->width;
-    g_height = screen_info->height;
-    g_bpp = screen_info->bpp;
-    g_pitch = screen_info->pitch;
+    // Physical Parameters
+    phys_width = screen_info->width;
+    phys_height = screen_info->height;
+    phys_pitch = screen_info->pitch;
     g_framebuffer = (uint32_t*)screen_info->framebuffer;
+
+    // Virtual Parameters (Requested)
+    uint8_t req = screen_info->requested_res;
+    if (req == 0) {
+        g_width = 1280;
+        g_height = 720;
+    } else if (req == 1) {
+        g_width = 1920;
+        g_height = 1080;
+    } else {
+        // Default / Native
+        g_width = phys_width;
+        g_height = phys_height;
+    }
+
+    // Check if requested fits in physical
+    // If user requested 1440p but physical is 720p (unlikely but possible), force match
+    if (g_width > phys_width || g_height > phys_height) {
+        g_width = phys_width;
+        g_height = phys_height;
+    }
+
+    g_pitch = g_width * 4; // Tightly packed backbuffer
+    g_bpp = 32;
 
     MAX_COLS = g_width / 8;
     MAX_ROWS = g_height / 16;
@@ -60,12 +90,48 @@ void init_screen() {
     clear_screen();
 }
 
+void swap_buffers() {
+    if (g_width == phys_width && g_height == phys_height) {
+        // Direct Copy
+        // We need to copy line by line if pitch differs, but usually...
+        // Backbuffer pitch is g_width*4.
+        // Phys pitch is phys_pitch.
+        // Copy height lines.
+        uint8_t* src = (uint8_t*)g_backbuffer;
+        uint8_t* dst = (uint8_t*)g_framebuffer;
+        int row_bytes = g_width * 4;
+
+        for (int y = 0; y < g_height; y++) {
+            memory_copy((char*)src, (char*)dst, row_bytes);
+            src += row_bytes;
+            dst += phys_pitch;
+        }
+    } else {
+        // Scaling (Nearest Neighbor)
+        for (int y = 0; y < phys_height; y++) {
+            // Map physical y to virtual y
+            int v_y = (y * g_height) / phys_height;
+            if (v_y >= g_height) v_y = g_height - 1;
+
+            uint32_t *src_row = g_backbuffer + (v_y * g_width);
+            uint8_t *dst_row = (uint8_t*)g_framebuffer + (y * phys_pitch);
+
+            for (int x = 0; x < phys_width; x++) {
+                 int v_x = (x * g_width) / phys_width;
+                 if (v_x >= g_width) v_x = g_width - 1;
+
+                 uint32_t color = src_row[v_x];
+                 *(uint32_t*)(dst_row + x * 4) = color;
+            }
+        }
+    }
+}
+
 void clear_screen() {
-    // Fill with Black
-    // Optimized: assume 32-bit aligned framebuffer
+    // Fill with Black (Backbuffer)
     int size = g_width * g_height;
     for (int i = 0; i < size; i++) {
-        g_framebuffer[i] = 0xFF000000;
+        g_backbuffer[i] = 0xFF000000;
     }
     cursor_x = 0;
     cursor_y = 0;
@@ -73,16 +139,7 @@ void clear_screen() {
 
 void put_pixel(int x, int y, uint32_t color) {
     if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
-    // Calculate offset: y * pitch + x * (bpp/8)
-    // Assuming 32 bpp
-    // g_pitch is in bytes. g_framebuffer is uint32_t*.
-    // We need byte offset then cast.
-
-    // Optimization: Since g_framebuffer is uint32_t*, we can index by pixels ONLY IF pitch == width * 4.
-    // VBE pitch might include padding. So always use pitch.
-
-    uint8_t *pixel_addr = (uint8_t*)g_framebuffer + (y * g_pitch) + (x * 4);
-    *(uint32_t*)pixel_addr = color;
+    g_backbuffer[y * g_width + x] = color;
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -153,27 +210,19 @@ void kprint_backspace() {
 }
 
 void scroll_screen() {
-    // Scroll up 16 pixels (one row)
-    // Copy (Height - 16) lines from y=16 to y=0
+    // Scroll up 16 pixels (one row) on BACKBUFFER
+    // g_pitch is now g_width * 4
     int bytes_per_line = g_pitch;
     int copy_size = (g_height - 16) * bytes_per_line;
 
-    // Source: line 16 (offset 16 * pitch)
-    // Dest: line 0
-    uint8_t *src = (uint8_t*)g_framebuffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_framebuffer;
+    // Source: line 16
+    uint8_t *src = (uint8_t*)g_backbuffer + (16 * bytes_per_line);
+    uint8_t *dst = (uint8_t*)g_backbuffer;
 
     memory_copy((char*)src, (char*)dst, copy_size);
 
-    // Clear last line (16 pixels high)
-    // Offset: (Height - 16) * pitch
-    uint8_t *last_line = (uint8_t*)g_framebuffer + ((g_height - 16) * bytes_per_line);
-    // Fill with black
-    // Using memory_set, but for 32-bit color 0 is transparent/black?
-    // ARGB 0x00000000 is transparent black?
-    // ARGB 0xFF000000 is opaque black.
-    // If I use 0, it might be fine.
-    // For TUI, let's assume 0 is black.
+    // Clear last line
+    uint8_t *last_line = (uint8_t*)g_backbuffer + ((g_height - 16) * bytes_per_line);
     memory_set((char*)last_line, 0, 16 * bytes_per_line);
 }
 

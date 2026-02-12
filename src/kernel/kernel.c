@@ -69,6 +69,9 @@ void kernel_main(void) {
             open_settings();
         }
 
+        // Swap Buffers (Double Buffering)
+        swap_buffers();
+
         // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
         // delay(100);
     }
@@ -222,12 +225,15 @@ void draw_loading_screen() {
 
     kprint_at_attr("[", bar_col - 1, bar_row, WIN_CONTENT_ATTR);
     kprint_at_attr("]", bar_col + bar_width, bar_row, WIN_CONTENT_ATTR);
+    swap_buffers();
 
     for (int i = 0; i < bar_width; i++) {
         char progress[2] = { '=', 0 };
         kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+        swap_buffers();
         delay(3000);
     }
 
+    swap_buffers();
     delay(5000);
 }
