@@ -66,6 +66,7 @@ void kernel_main(void) {
 }
 
 void draw_interface() {
+
   // 1. Layer 0: Wallpaper
   draw_wallpaper();
 
@@ -120,10 +121,20 @@ void draw_desktop_icons() {
 }
 
 void draw_top_bar() {
-  draw_fill(0, 0, MAX_COLS, 1, ' ', TOP_BAR_BG);
-  kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
-  kprint_at_attr(" Oct 25 12:00 ", 35, 0, WIN_ACCENT_ATTR);
-  kprint_at_attr(" WF BT PW ", 70, 0, TOP_BAR_TEXT_ATTR);
+
+    // Fedora Style: Slim (1 Row)
+    draw_fill(0, 0, MAX_COLS, 1, ' ', TOP_BAR_BG);
+
+    // Left: "Activities"
+    kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
+
+    // Center: Clock
+    int clock_x = (MAX_COLS / 2) - 7;
+    kprint_at_attr(" Oct 25 12:00 ", clock_x, 0, TOP_BAR_TEXT_ATTR);
+
+    // Right: Status Icons
+    kprint_at_attr(" WF  BT  PW ", MAX_COLS - 14, 0, TOP_BAR_TEXT_ATTR);
+
 }
 
 void draw_bottom_bar() {
@@ -134,14 +145,17 @@ void draw_bottom_bar() {
   draw_fill(0, y_start, MAX_COLS, 3, TASKBAR_CHAR, TASKBAR_ATTR);
   kprint_at_attr(" [T] ", 1, y_start + 1, WIN_ACCENT_ATTR);
 
-  int center = 30;
-  kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
+    // Centered Apps
+    int center = (MAX_COLS / 2) - 8;
+    kprint_at_attr(" [Code] ", center, y_start + 1, WIN_ACCENT_ATTR);
 
   char active_line[] = {'_', '_', '_', '_', '_', '_', '_', '_', 0};
   kprint_at_attr(active_line, center, y_start + 2, WIN_ACCENT_ATTR);
 
-  kprint_at_attr(" [Term] ", center + 10, y_start + 1, WIN_CONTENT_ATTR);
-  kprint_at_attr(" ^  ENG  12:00 ", 65, y_start + 1, WIN_CONTENT_ATTR);
+    kprint_at_attr(" [Term] ", center + 10, y_start + 1, WIN_CONTENT_ATTR);
+
+    // System Tray
+    kprint_at_attr(" ^  ENG  12:00 ", MAX_COLS - 16, y_start + 1, WIN_CONTENT_ATTR);
 }
 
 void draw_window(int x, int y, int w, int h, const char *title,

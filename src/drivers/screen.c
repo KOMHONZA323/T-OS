@@ -86,10 +86,12 @@ void init_screen() {
 }
 
 void clear_screen() {
+
   for (int y = 0; y < g_height; y++) {
     uint32_t *row = (uint32_t *)((uint8_t *)g_back_buffer + (y * g_logical_pitch));
     for (int x = 0; x < g_width; x++) {
       row[x] = 0xFF000000;
+
     }
   }
 
