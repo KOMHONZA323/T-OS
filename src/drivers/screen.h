@@ -52,6 +52,14 @@ typedef struct {
 extern int MAX_COLS;
 extern int MAX_ROWS;
 
+// Global screen properties
+extern int g_width;
+extern int g_height;
+extern int g_pitch;
+extern int g_bpp;
+extern uint32_t *g_framebuffer;
+extern uint32_t *g_back_buffer;
+
 /* Public kernel API */
 void init_screen();
 void swap_buffers();
