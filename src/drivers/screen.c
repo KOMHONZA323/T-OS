@@ -63,10 +63,15 @@ void init_screen() {
 
 void clear_screen() {
     // Fill with Black
-    // Optimized: assume 32-bit aligned framebuffer
-    int size = g_width * g_height;
-    for (int i = 0; i < size; i++) {
-        g_back_buffer[i] = 0xFF000000;
+    // Handle pitch correctly (stride might be larger than width * 4)
+    uint8_t *row_ptr = (uint8_t*)g_back_buffer;
+
+    for (int y = 0; y < g_height; y++) {
+        uint32_t *pixel = (uint32_t*)row_ptr;
+        for (int x = 0; x < g_width; x++) {
+            pixel[x] = 0xFF000000;
+        }
+        row_ptr += g_pitch;
     }
     cursor_x = 0;
     cursor_y = 0;
