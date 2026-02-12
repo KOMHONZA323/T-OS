@@ -5,8 +5,8 @@
 /* Global Screen Info */
 ScreenInfo *screen_info = (ScreenInfo *)0x5000;
 uint8_t *g_font = (uint8_t *)0xA000;             // BIOS Font 8x16
-uint32_t *g_framebuffer = 0;                     // VRAM Pointer
-uint32_t *g_back_buffer = (uint32_t *)0x1000000; // 16MB Mark (Back Buffer)
+uint32_t *g_framebuffer = 0; // VRAM Pointer
+uint32_t *g_back_buffer = (uint32_t *)0x2000000; // 32MB Mark (Back Buffer)
 
 /* Dimensions */
 int g_width = 0;
@@ -73,6 +73,11 @@ void init_screen() {
   MAX_COLS = g_width / 8;
   MAX_ROWS = g_height / 16;
 
+  // Keep a separate back buffer to prevent visible flicker/tearing.
+  // 0x02000000 leaves enough room for 4K RGBA frame copies on common QEMU RAM
+  // sizes while avoiding the old 16MB overflow.
+  g_back_buffer = (uint32_t *)0x2000000;
+
   // Reset cursor
   cursor_x = 0;
   cursor_y = 0;
@@ -81,14 +86,11 @@ void init_screen() {
 }
 
 void clear_screen() {
-  // Fill Back Buffer with Black
-  // Since Back Buffer is packed (logical pitch), we can treat it as one giant
-  // array This is faster and simpler than row-by-row
-  int total_pixels = g_width * g_height;
-  uint32_t *pixel = g_back_buffer;
-
-  for (int i = 0; i < total_pixels; i++) {
-    pixel[i] = 0xFF000000;
+  for (int y = 0; y < g_height; y++) {
+    uint32_t *row = (uint32_t *)((uint8_t *)g_back_buffer + (y * g_logical_pitch));
+    for (int x = 0; x < g_width; x++) {
+      row[x] = 0xFF000000;
+    }
   }
 
   cursor_x = 0;
@@ -96,15 +98,10 @@ void clear_screen() {
 }
 
 void swap_buffers() {
-  // TRANSLATOR: Back Buffer (Packed) -> Framebuffer (Strided)
-
   uint8_t *src_ptr = (uint8_t *)g_back_buffer;
   uint8_t *dst_ptr = (uint8_t *)g_framebuffer;
 
-  // We copy row by row
   for (int y = 0; y < g_height; y++) {
-    // Copy visible pixels for this row
-    // We can cast to uint32_t for speed, copying 'g_width' pixels
     uint32_t *s = (uint32_t *)src_ptr;
     uint32_t *d = (uint32_t *)dst_ptr;
 
@@ -112,9 +109,6 @@ void swap_buffers() {
       d[x] = s[x];
     }
 
-    // KEY FIX: Advance Source by LOGICAL pitch, Dest by HARDWARE pitch
-    // This skips any padding bytes that the video card requires at the end of a
-    // line
     src_ptr += g_logical_pitch;
     dst_ptr += g_pitch;
   }
