@@ -70,7 +70,7 @@ void kprint_at_attr(char *message, int col, int row, char attr);
 void kprint(char *message);
 void kprint_backspace();
 
-/* TUI Extension functions */
+/* TUI Extension functions (Legacy, use new primitives for modern UI) */
 void draw_rect(int col, int row, int width, int height, char attr);
 void draw_fill(int col, int row, int width, int height, char c, char attr);
 void draw_box(int col, int row, int width, int height, char border_attr, char inner_attr);
@@ -78,6 +78,16 @@ void draw_box_rounded(int col, int row, int width, int height, char border_attr,
 
 /* Low-level Graphics API */
 void put_pixel(int x, int y, uint32_t color);
+uint32_t get_pixel(int x, int y);
 uint32_t vga_to_rgb(uint8_t attr);
+void swap_buffers();
+
+/* Modern Graphics API (Pixel based) */
+void draw_rect_px(int x, int y, int w, int h, uint32_t color);
+void draw_rect_alpha(int x, int y, int w, int h, uint32_t color, uint8_t alpha);
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color);
+void draw_circle(int xc, int yc, int r, uint32_t color);
+void draw_rounded_rect(int x, int y, int w, int h, int r, uint32_t color);
+void draw_fill_circle(int xc, int yc, int r, uint32_t color); // Helper for rounded rect fill
 
 #endif

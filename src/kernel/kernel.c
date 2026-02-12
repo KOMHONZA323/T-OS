@@ -14,6 +14,12 @@ void draw_window(int x, int y, int w, int h, const char *title,
                  const char *content);
 void draw_loading_screen();
 void open_settings();
+void draw_string_px(int x, int y, const char* str, uint32_t fg);
+
+// External from screen.c
+extern void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
+extern int g_width, g_height;
+extern uint8_t *g_font;
 
 // Global state
 int show_settings = 0;
@@ -126,7 +132,7 @@ void draw_top_bar() {
     draw_fill(0, 0, MAX_COLS, 1, ' ', TOP_BAR_BG);
 
     // Left: "Activities"
-    kprint_at_attr(" Activities ", 1, 0, TOP_BAR_TEXT_ATTR);
+    draw_string_px(10, 4, "Activities", COLOR_TOP_BAR_TEXT);
 
     // Center: Clock
     int clock_x = (MAX_COLS / 2) - 7;
