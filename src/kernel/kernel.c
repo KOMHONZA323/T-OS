@@ -100,7 +100,9 @@ void draw_interface() {
 }
 
 void draw_wallpaper() {
-  draw_fill(0, 0, MAX_COLS, MAX_ROWS, WALLPAPER_CHAR, WALLPAPER_ATTR);
+  // Use a solid fill so ultra-high resolutions do not introduce visible
+  // font-pattern banding artifacts across the desktop background.
+  draw_rect(0, 0, MAX_COLS, MAX_ROWS, WALLPAPER_ATTR);
 }
 
 void draw_desktop_icons() {
