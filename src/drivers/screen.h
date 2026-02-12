@@ -10,6 +10,7 @@ typedef struct {
     uint8_t bpp;
     uint16_t pitch;
     uint32_t framebuffer;
+    uint8_t requested_res;
 } __attribute__((packed)) ScreenInfo;
 
 // Colors (ARGB 8888)
@@ -52,8 +53,17 @@ typedef struct {
 extern int MAX_COLS;
 extern int MAX_ROWS;
 
+// Global screen properties
+extern int g_width;
+extern int g_height;
+extern int g_pitch;
+extern int g_bpp;
+extern uint32_t *g_framebuffer;
+extern uint32_t *g_back_buffer;
+
 /* Public kernel API */
 void init_screen();
+void swap_buffers();
 void clear_screen();
 void kprint_at(char *message, int col, int row);
 void kprint_at_attr(char *message, int col, int row, char attr);
