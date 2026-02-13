@@ -290,6 +290,8 @@ find_best_mode:
     push si
     push fs
 
+    call clear_mode_info_block
+
     mov cx, bx
     or cx, 0x4000 ; LFB
     mov ax, 0x4F01
@@ -347,6 +349,7 @@ find_best_mode:
     pop bx ; Restore mode number for info query
     
     ; Refresh Info Block for the chosen mode (since we scanned past it)
+    call clear_mode_info_block
     mov cx, bx
     or cx, 0x4000
     mov ax, 0x4F01
@@ -370,6 +373,8 @@ next_specific:
     push dx
     push si
     push fs
+
+    call clear_mode_info_block
 
     mov cx, bx
     or cx, 0x4000
@@ -418,9 +423,15 @@ save_mode_info:
     mov [es:di+4], al
 
     ; --- PITCH CORRECTION ---
+    ; Check VBE Version
+    mov ax, [VBE_INFO_BLOCK + 4]
+    cmp ax, 0x0300
+    jb use_legacy_pitch
+
     mov ax, [MODE_INFO_BLOCK + 50] ; LinBytesPerScanLine
     cmp ax, 0
     jne use_lin_pitch
+use_legacy_pitch:
     mov ax, [MODE_INFO_BLOCK + 16] ; BytesPerScanLine
 use_lin_pitch:
     mov [es:di+5], ax
