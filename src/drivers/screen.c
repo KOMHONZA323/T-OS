@@ -11,6 +11,7 @@ int g_width = 0;
 int g_height = 0;
 int g_pitch = 0;
 int g_bpp = 0;
+int g_logical_pitch = 0; // [FIX] Added missing declaration
 
 /* Current cursor position */
 int cursor_x = 0;
@@ -51,23 +52,17 @@ void init_screen() {
   g_pitch = screen_info->pitch;
 
   // SANITY CHECK: Pitch (Stride)
-  // If pitch is suspiciously large (e.g. > width * 8 bytes), assume it's
-  // garbage and fallback to packed width*4. This fixes issues where VBE reports
-  // huge stride values causing vertical banding/skipping.
   int expected_pitch = g_width * 4;
   if (g_pitch > expected_pitch * 2) {
-    // Force packed pitch if reported pitch is > 2x width (unreasonable padding)
     g_pitch = expected_pitch;
   }
-  // Also fix if pitch is too small (e.g. reported as 0 or pixels)
   if (g_pitch < expected_pitch) {
     g_pitch = expected_pitch;
   }
 
   g_framebuffer = (uint32_t *)screen_info->framebuffer;
-  // Attempt to read better pitch from raw MODE_INFO_BLOCK at 0x3000
-  // because some VBE implementations report packed pitch instead of
-  // padded stride in the main structure.
+
+  // Attempt to read better pitch from raw MODE_INFO_BLOCK
   uint8_t *mode_info = (uint8_t *)0x3000;
   uint16_t bytes_per_scanline = *(uint16_t *)(mode_info + 16);
   uint16_t lin_bytes_per_scanline = *(uint16_t *)(mode_info + 50);
@@ -80,9 +75,7 @@ void init_screen() {
   // Logical Pitch (Back Buffer is always packed 32-bit pixels)
   g_logical_pitch = g_width * 4;
 
-  // Allocate back buffer at a fixed memory location (e.g., 16MB mark)
-  // Assuming we have enough RAM. 1920x1080x4 ~= 8MB.
-  // 0x1000000 (16MB) is usually safe in QEMU with default RAM (128MB+).
+  // Allocate back buffer at 16MB mark
   g_back_buffer = (uint32_t *)0x1000000;
 
   MAX_COLS = g_width / 8;
@@ -91,16 +84,12 @@ void init_screen() {
   // Reset cursor
   cursor_x = 0;
   cursor_y = 0;
-  // Use double buffering at 16MB (Safe for 128MB RAM)
-  g_back_buffer = (uint32_t *)0x1000000;
-  g_logical_pitch = g_width * 4;
 
   clear_screen();
 }
 
 void clear_screen() {
   // Fill with Black
-  // Optimized: assume 32-bit aligned framebuffer
   int size = g_width * g_height;
   for (int i = 0; i < size; i++) {
     g_back_buffer[i] = 0xFF000000;
@@ -113,60 +102,33 @@ void put_pixel(int x, int y, uint32_t color) {
   if (x < 0 || x >= g_width || y < 0 || y >= g_height)
     return;
 
-  // Write to Back Buffer (Packed, width * 4)
-  // We decouple back buffer stride from VBE hardware pitch to fix chunking
-  // artifacts. Back buffer is always width * 4 bytes per row.
-
-  // uint32_t* arithmetic: index = y * width + x
-  g_back_buffer[y * g_width + x] = color;
+  // Draw to Back Buffer using LOGICAL pitch (Packed)
+  // [FIX] Removed duplicate function and consolidated logic
+  uint8_t *pixel_addr =
+      (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
+  *(uint32_t *)pixel_addr = color;
 }
 
 void wait_vsync() {
-  // Wait for vertical retrace to start
-  // Port 0x3DA, bit 3 (Vertical Retrace)
-  // First, wait until we are NOT in retrace (in case we called during one)
   while (port_byte_in(0x3DA) & 8)
     ;
-  // Then wait until retrace STARTS
   while (!(port_byte_in(0x3DA) & 8))
     ;
 }
 
 void swap_buffers() {
-  // Wait for VSync before swapping to prevent tearing/flickering
   wait_vsync();
 
   // Copy back buffer to front buffer row by row
-  // handling potential pitch mismatch (padding)
-
   for (int y = 0; y < g_height; y++) {
-    // Source: Back buffer (Packed)
+    // Source: Back buffer (Packed using g_logical_pitch or width*4)
+    char *src = (char *)g_back_buffer + (y * g_logical_pitch);
     // Dest: Front buffer (Hardware Pitch)
-
-    // Use char* for byte arithmetic
-    char *src = (char *)g_back_buffer + (y * g_width * 4);
     char *dst = (char *)g_framebuffer + (y * g_pitch);
 
     memory_copy(src, dst, g_width * 4);
   }
-  for (int y = 0; y < g_height; y++) {
-    // Use optimized memory_copy (rep movsl) for row transfer
-    memory_copy((char *)src_ptr, (char *)dst_ptr, g_width * 4);
-
-    src_ptr += g_logical_pitch;
-    dst_ptr += g_pitch;
-  }
-}
-
-void put_pixel(int x, int y, uint32_t color) {
-  if (x < 0 || x >= g_width || y < 0 || y >= g_height)
-    return;
-
-  // Draw to Back Buffer using LOGICAL pitch (Packed)
-  // No gaps, clean math.
-  uint8_t *pixel_addr =
-      (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
-  *(uint32_t *)pixel_addr = color;
+  // [FIX] Removed the broken second loop with undefined src_ptr/dst_ptr
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -175,7 +137,6 @@ void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
   for (int row = 0; row < 16; row++) {
     uint8_t data = glyph[row];
     for (int col = 0; col < 8; col++) {
-      // Check bit (MSB first)
       if ((data >> (7 - col)) & 1) {
         put_pixel(x + col, y + row, fg);
       } else {
@@ -210,13 +171,11 @@ void kprint_at_attr(char *message, int col, int row, char attr) {
       cursor_x++;
     }
 
-    // Wrap
     if (cursor_x >= MAX_COLS) {
       cursor_x = 0;
       cursor_y++;
     }
 
-    // Scroll
     if (cursor_y >= MAX_ROWS) {
       scroll_screen();
       cursor_y = MAX_ROWS - 1;
@@ -238,21 +197,15 @@ void kprint_backspace() {
 }
 
 void scroll_screen() {
-  // Scroll up 16 pixels (one row)
-  // Operate strictly on Back Buffer (Packed)
-
-  int bytes_per_line = g_width * 4; // Packed
+  int bytes_per_line = g_logical_pitch; // [FIX] Use g_logical_pitch
   int copy_rows = g_height - 16;
   int copy_size = copy_rows * bytes_per_line;
 
-  // Source: line 16
-  // Dest: line 0
   uint8_t *src = (uint8_t *)g_back_buffer + (16 * bytes_per_line);
   uint8_t *dst = (uint8_t *)g_back_buffer;
 
   memory_copy((char *)src, (char *)dst, copy_size);
 
-  // Clear last line (16 pixels high)
   uint8_t *last_line = (uint8_t *)g_back_buffer + (copy_rows * bytes_per_line);
   memory_set((char *)last_line, 0, 16 * bytes_per_line);
 }
@@ -260,11 +213,7 @@ void scroll_screen() {
 /* TUI Functions */
 
 void draw_rect(int col, int row, int width, int height, char attr) {
-  // Clear chars in this rect with bg color
   uint32_t bg = vga_palette[(attr >> 4) & 0x0F];
-  // We only fill background?
-  // Actually draw_rect usually clears the area.
-
   int x_start = col * 8;
   int y_start = row * 16;
   int w_px = width * 8;
@@ -290,15 +239,11 @@ void draw_fill(int col, int row, int width, int height, char c, char attr) {
 
 void draw_box(int col, int row, int width, int height, char border_attr,
               char inner_attr) {
-  // Naive implementation using chars
-  // Top/Bottom
   uint32_t b_fg = vga_palette[border_attr & 0x0F];
   uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
-  // Fill inside
   draw_fill(col + 1, row + 1, width - 2, height - 2, ' ', inner_attr);
 
-  // Borders
   for (int x = 0; x < width; x++) {
     draw_char(205, (col + x) * 8, row * 16, b_fg, b_bg);
     draw_char(205, (col + x) * 8, (row + height - 1) * 16, b_fg, b_bg);
@@ -307,7 +252,6 @@ void draw_box(int col, int row, int width, int height, char border_attr,
     draw_char(186, col * 8, (row + y) * 16, b_fg, b_bg);
     draw_char(186, (col + width - 1) * 8, (row + y) * 16, b_fg, b_bg);
   }
-  // Corners
   draw_char(201, col * 8, row * 16, b_fg, b_bg);
   draw_char(187, (col + width - 1) * 8, row * 16, b_fg, b_bg);
   draw_char(200, col * 8, (row + height - 1) * 16, b_fg, b_bg);
@@ -316,32 +260,24 @@ void draw_box(int col, int row, int width, int height, char border_attr,
 
 void draw_box_rounded(int col, int row, int width, int height, char border_attr,
                       char inner_attr, char title_attr) {
-  // Fill Inner
   draw_fill(col + 1, row + 1, width - 2, height - 2, ' ', inner_attr);
 
   uint32_t b_fg = vga_palette[border_attr & 0x0F];
   uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
-  // Borders (Single lines)
   for (int x = 1; x < width - 1; x++) {
-    draw_char(196, (col + x) * 8, row * 16, b_fg, b_bg); // Top
-    draw_char(196, (col + x) * 8, (row + height - 1) * 16, b_fg,
-              b_bg); // Bottom
+    draw_char(196, (col + x) * 8, row * 16, b_fg, b_bg);
+    draw_char(196, (col + x) * 8, (row + height - 1) * 16, b_fg, b_bg);
   }
   for (int y = 1; y < height - 1; y++) {
-    draw_char(179, col * 8, (row + y) * 16, b_fg, b_bg);               // Left
-    draw_char(179, (col + width - 1) * 8, (row + y) * 16, b_fg, b_bg); // Right
+    draw_char(179, col * 8, (row + y) * 16, b_fg, b_bg);
+    draw_char(179, (col + width - 1) * 8, (row + y) * 16, b_fg, b_bg);
   }
 
-  // Corners (Single line rounded-ish)
-  draw_char(218, col * 8, row * 16, b_fg, b_bg);                // TL
-  draw_char(191, (col + width - 1) * 8, row * 16, b_fg, b_bg);  // TR
-  draw_char(192, col * 8, (row + height - 1) * 16, b_fg, b_bg); // BL
-  draw_char(217, (col + width - 1) * 8, (row + height - 1) * 16, b_fg,
-            b_bg); // BR
-
-  // Title bar area?
-  // Already handled by caller filling title text.
+  draw_char(218, col * 8, row * 16, b_fg, b_bg);
+  draw_char(191, (col + width - 1) * 8, row * 16, b_fg, b_bg);
+  draw_char(192, col * 8, (row + height - 1) * 16, b_fg, b_bg);
+  draw_char(217, (col + width - 1) * 8, (row + height - 1) * 16, b_fg, b_bg);
 }
 
 uint32_t vga_to_rgb(uint8_t attr) { return vga_palette[attr & 0x0F]; }
