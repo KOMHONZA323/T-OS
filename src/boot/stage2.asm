@@ -192,6 +192,8 @@ wait_key:
     mov ah, 0x00
     int 0x16
 
+    cmp al, '0'
+    je sel_auto
     cmp al, '1'
     je sel_720p
     cmp al, '2'
@@ -200,6 +202,9 @@ wait_key:
     je sel_1440p
     jmp wait_key
 
+sel_auto:
+    mov byte [SELECTED_RES], 0xFF
+    jmp menu_done
 sel_720p:
     mov byte [SELECTED_RES], 0
     jmp menu_done
@@ -235,6 +240,8 @@ set_vbe_mode:
 
     ; Target Width/Height
     mov al, [SELECTED_RES]
+    cmp al, 0xFF
+    je auto_detect
     cmp al, 0
     je target_720p
     cmp al, 1
@@ -254,6 +261,99 @@ target_1440p:
     mov cx, 2560
     mov dx, 1440
     jmp find_mode
+
+auto_detect:
+    ; Loop through all modes and find highest resolution
+    mov word [BEST_MODE], 0xFFFF
+    mov dword [BEST_PIXELS], 0
+
+next_auto_mode:
+    mov bx, [fs:si]
+    add si, 2
+    cmp bx, 0xFFFF
+    je set_auto_mode ; End of list, set the best found
+
+    ; Get Mode Info
+    push si
+    push fs
+
+    mov cx, bx ; Mode number
+    or cx, 0x4000 ; LFB
+    mov ax, 0x4F01
+    mov di, MODE_INFO_BLOCK
+    int 0x10
+
+    pop fs
+    pop si
+
+    cmp ax, 0x004F
+    jne next_auto_mode
+
+    ; Check BPP (Offset 25) - Must be 32
+    mov al, [MODE_INFO_BLOCK + 25]
+    cmp al, 32
+    jne next_auto_mode
+
+    ; Check Attributes (Offset 0) - Must support LFB (bit 7) and Graphics (bit 4)
+    mov ax, [MODE_INFO_BLOCK]
+    test ax, 0x0080 ; LFB
+    jz next_auto_mode
+    test ax, 0x0010 ; Graphics
+    jz next_auto_mode
+
+    ; Calculate Resolution (Width * Height)
+    mov ax, [MODE_INFO_BLOCK + 18] ; Width
+    mov dx, [MODE_INFO_BLOCK + 20] ; Height
+
+    ; Simple 32-bit Multiply (AX * DX -> DX:AX)
+    mov cx, dx
+    mul cx ; DX:AX = Width * Height
+
+    ; Compare with BEST_PIXELS (stored as low dword, ignoring overflow > 4G which is impossible)
+    ; Actually mul produces DX:AX. Width*Height fits in 32 bits easily (4K is ~8M pixels)
+    push bx
+    mov bx, word [BEST_PIXELS]
+    mov cx, word [BEST_PIXELS+2]
+
+    ; Compare High Word (DX vs CX)
+    cmp dx, cx
+    ja new_best
+    jb not_best
+    ; Compare Low Word (AX vs BX)
+    cmp ax, bx
+    ja new_best
+    jmp not_best
+
+new_best:
+    mov word [BEST_PIXELS], ax
+    mov word [BEST_PIXELS+2], dx
+    mov bx, [fs:si-2] ; Retrieve mode number
+    mov [BEST_MODE], bx
+
+not_best:
+    pop bx
+    jmp next_auto_mode
+
+set_auto_mode:
+    mov bx, [BEST_MODE]
+    cmp bx, 0xFFFF
+    je vbe_error ; No suitable mode found
+
+    ; Found best mode, set it
+    or bx, 0x4000     ; Enable LFB
+    mov ax, 0x4F02
+    int 0x10
+    cmp ax, 0x004F
+    jne vbe_error
+
+    ; Re-read mode info for the chosen mode to populate kernel info
+    mov cx, [BEST_MODE]
+    or cx, 0x4000
+    mov ax, 0x4F01
+    mov di, MODE_INFO_BLOCK
+    int 0x10
+
+    jmp save_info
 
 find_mode:
     ; CX = Width, DX = Height
@@ -307,6 +407,7 @@ next_mode:
     cmp ax, 0x004F
     jne vbe_error
 
+save_info:
     ; Save Info for Kernel
     ; Copy relevant data to 0x5000
     mov ax, 0
@@ -367,9 +468,12 @@ BOOT_DRIVE db 0
 SELECTED_RES db 0
 SECTORS_PER_TRACK db 18
 HEADS db 2
-MSG_MENU db "Select Resolution:", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, 0
+MSG_MENU db "Select Resolution:", 13, 10, "0. Auto", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, 0
 MSG_VBE_ERR db "VBE Error or Resolution Not Supported!", 0
 MSG_DISK_ERR db "Disk Read Error!", 0
+
+BEST_MODE dw 0
+BEST_PIXELS dd 0
 
 ; Buffers
 CONFIG_BUFFER:
