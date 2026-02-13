@@ -29,8 +29,8 @@
  */
 
 /* Background Fill */
-#define WALLPAPER_CHAR ' '
-#define WALLPAPER_ATTR ((DARK_GREY << 4) | BLACK) // Solid dark wallpaper
+#define WALLPAPER_CHAR 0xB0 // Light shade
+#define WALLPAPER_ATTR ((BLACK << 4) | DARK_GREY) // Dark Grey on Black
 
 /* Top Bar (Translucent Black -> Black BG) */
 #define TOP_BAR_BG ((BLACK << 4) | LIGHT_GREY)
