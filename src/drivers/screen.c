@@ -73,10 +73,9 @@ void init_screen() {
   MAX_COLS = g_width / 8;
   MAX_ROWS = g_height / 16;
 
-  // Use direct rendering into VRAM to avoid corruption from assuming a fixed
-  // back-buffer address/size at high resolutions (e.g. 4K).
-  g_back_buffer = g_framebuffer;
-  g_logical_pitch = g_pitch;
+  // Use double buffering at 16MB (Safe for 128MB RAM)
+  g_back_buffer = (uint32_t *)0x1000000;
+  g_logical_pitch = g_width * 4;
 
   // Reset cursor
   cursor_x = 0;
@@ -107,9 +106,7 @@ void wait_vsync() {
 }
 
 void swap_buffers() {
-  // No-op when drawing directly into VRAM.
-  if (g_back_buffer == g_framebuffer)
-    return;
+  wait_vsync();
 
   uint8_t *src_ptr = (uint8_t *)g_back_buffer;
   uint8_t *dst_ptr = (uint8_t *)g_framebuffer;
