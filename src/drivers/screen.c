@@ -62,6 +62,16 @@ void init_screen() {
   // Hardware Pitch (from VBE)
   g_pitch = screen_info->pitch;
 
+  // Attempt to read better pitch from raw MODE_INFO_BLOCK at 0x3000
+  // because some VBE implementations report packed pitch instead of
+  // padded stride in the main structure.
+  uint8_t *mode_info = (uint8_t *)0x3000;
+  uint16_t bytes_per_scanline = *(uint16_t *)(mode_info + 16);
+  uint16_t lin_bytes_per_scanline = *(uint16_t *)(mode_info + 50);
+
+  if (bytes_per_scanline > g_pitch) g_pitch = bytes_per_scanline;
+  if (lin_bytes_per_scanline > g_pitch) g_pitch = lin_bytes_per_scanline;
+
   // Logical Pitch (Back Buffer is always packed 32-bit pixels)
   g_logical_pitch = g_width * 4;
 
