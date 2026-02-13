@@ -6,6 +6,7 @@
 ScreenInfo *screen_info = (ScreenInfo*)0x5000;
 uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
 uint32_t *g_framebuffer = 0;
+uint32_t *g_back_buffer = 0;
 int g_width = 0;
 int g_height = 0;
 int g_pitch = 0;
@@ -50,6 +51,11 @@ void init_screen() {
     g_pitch = screen_info->pitch;
     g_framebuffer = (uint32_t*)screen_info->framebuffer;
 
+    // Allocate back buffer at a fixed memory location (e.g., 16MB mark)
+    // Assuming we have enough RAM. 1920x1080x4 ~= 8MB.
+    // 0x1000000 (16MB) is usually safe in QEMU with default RAM (128MB+).
+    g_back_buffer = (uint32_t*)0x1000000;
+
     MAX_COLS = g_width / 8;
     MAX_ROWS = g_height / 16;
 
@@ -65,7 +71,7 @@ void clear_screen() {
     // Optimized: assume 32-bit aligned framebuffer
     int size = g_width * g_height;
     for (int i = 0; i < size; i++) {
-        g_framebuffer[i] = 0xFF000000;
+        g_back_buffer[i] = 0xFF000000;
     }
     cursor_x = 0;
     cursor_y = 0;
@@ -73,16 +79,29 @@ void clear_screen() {
 
 void put_pixel(int x, int y, uint32_t color) {
     if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
-    // Calculate offset: y * pitch + x * (bpp/8)
-    // Assuming 32 bpp
-    // g_pitch is in bytes. g_framebuffer is uint32_t*.
-    // We need byte offset then cast.
 
-    // Optimization: Since g_framebuffer is uint32_t*, we can index by pixels ONLY IF pitch == width * 4.
-    // VBE pitch might include padding. So always use pitch.
+    // Write to Back Buffer (Packed, width * 4)
+    // We decouple back buffer stride from VBE hardware pitch to fix chunking artifacts.
+    // Back buffer is always width * 4 bytes per row.
 
-    uint8_t *pixel_addr = (uint8_t*)g_framebuffer + (y * g_pitch) + (x * 4);
-    *(uint32_t*)pixel_addr = color;
+    // uint32_t* arithmetic: index = y * width + x
+    g_back_buffer[y * g_width + x] = color;
+}
+
+void swap_buffers() {
+    // Copy back buffer to front buffer row by row
+    // handling potential pitch mismatch (padding)
+
+    for (int y = 0; y < g_height; y++) {
+        // Source: Back buffer (Packed)
+        // Dest: Front buffer (Hardware Pitch)
+
+        // Use char* for byte arithmetic
+        char *src = (char*)g_back_buffer + (y * g_width * 4);
+        char *dst = (char*)g_framebuffer + (y * g_pitch);
+
+        memory_copy(src, dst, g_width * 4);
+    }
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -154,26 +173,21 @@ void kprint_backspace() {
 
 void scroll_screen() {
     // Scroll up 16 pixels (one row)
-    // Copy (Height - 16) lines from y=16 to y=0
-    int bytes_per_line = g_pitch;
-    int copy_size = (g_height - 16) * bytes_per_line;
+    // Operate strictly on Back Buffer (Packed)
 
-    // Source: line 16 (offset 16 * pitch)
+    int bytes_per_line = g_width * 4; // Packed
+    int copy_rows = g_height - 16;
+    int copy_size = copy_rows * bytes_per_line;
+
+    // Source: line 16
     // Dest: line 0
-    uint8_t *src = (uint8_t*)g_framebuffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_framebuffer;
+    uint8_t *src = (uint8_t*)g_back_buffer + (16 * bytes_per_line);
+    uint8_t *dst = (uint8_t*)g_back_buffer;
 
     memory_copy((char*)src, (char*)dst, copy_size);
 
     // Clear last line (16 pixels high)
-    // Offset: (Height - 16) * pitch
-    uint8_t *last_line = (uint8_t*)g_framebuffer + ((g_height - 16) * bytes_per_line);
-    // Fill with black
-    // Using memory_set, but for 32-bit color 0 is transparent/black?
-    // ARGB 0x00000000 is transparent black?
-    // ARGB 0xFF000000 is opaque black.
-    // If I use 0, it might be fine.
-    // For TUI, let's assume 0 is black.
+    uint8_t *last_line = (uint8_t*)g_back_buffer + (copy_rows * bytes_per_line);
     memory_set((char*)last_line, 0, 16 * bytes_per_line);
 }
 

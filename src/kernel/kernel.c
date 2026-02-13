@@ -99,6 +99,9 @@ void kernel_main(void) {
             open_fps_settings();
         }
 
+        // Swap Buffers (VSync)
+        swap_buffers();
+
         // FPS Limiter (using PIT)
         uint32_t elapsed = get_tick_count() - start_tick;
         uint32_t frame_time = 1000 / target_fps;
@@ -281,6 +284,7 @@ void draw_loading_screen() {
     for (int i = 0; i < bar_width; i++) {
         char progress[2] = { '=', 0 };
         kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+        swap_buffers(); // Force update during animation
         delay(3000);
     }
 
