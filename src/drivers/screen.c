@@ -50,7 +50,6 @@ uint32_t vga_palette[16] = {
 };
 
 /* Forward Declarations */
-void scroll_screen();
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
 
 void init_screen() {
@@ -143,6 +142,26 @@ void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
   }
 }
 
+void scroll_screen() {
+  // Scroll operates purely on the Back Buffer
+  // So we use g_logical_pitch everywhere here
+
+  // Copy (Height - 16) lines from y=16 to y=0
+  int bytes_per_line = g_logical_pitch;
+  int bytes_to_copy = (g_height - 16) * bytes_per_line;
+
+  uint8_t *src = (uint8_t *)g_back_buffer + (16 * bytes_per_line);
+  uint8_t *dst = (uint8_t *)g_back_buffer;
+
+  // Since back buffer is packed, we can just memcpy the block
+  memory_copy((char *)src, (char *)dst, bytes_to_copy);
+
+  // Clear last line
+  uint8_t *last_line =
+      (uint8_t *)g_back_buffer + ((g_height - 16) * bytes_per_line);
+  memory_set((char *)last_line, 0, 16 * bytes_per_line);
+}
+
 void kprint_at_attr(char *message, int col, int row, char attr) {
   if (col >= 0)
     cursor_x = col;
@@ -193,26 +212,6 @@ void kprint_backspace() {
     cursor_x--;
     draw_char(' ', cursor_x * 8, cursor_y * 16, VGA_WHITE, VGA_BLACK);
   }
-}
-
-void scroll_screen() {
-  // Scroll operates purely on the Back Buffer
-  // So we use g_logical_pitch everywhere here
-
-  // Copy (Height - 16) lines from y=16 to y=0
-  int bytes_per_line = g_logical_pitch;
-  int bytes_to_copy = (g_height - 16) * bytes_per_line;
-
-  uint8_t *src = (uint8_t *)g_back_buffer + (16 * bytes_per_line);
-  uint8_t *dst = (uint8_t *)g_back_buffer;
-
-  // Since back buffer is packed, we can just memcpy the block
-  memory_copy((char *)src, (char *)dst, bytes_to_copy);
-
-  // Clear last line
-  uint8_t *last_line =
-      (uint8_t *)g_back_buffer + ((g_height - 16) * bytes_per_line);
-  memory_set((char *)last_line, 0, 16 * bytes_per_line);
 }
 
 /* TUI Functions */
