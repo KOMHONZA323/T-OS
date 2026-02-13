@@ -22,6 +22,31 @@
 /* Modern T-OS Design Specs (ARGB 8888) */
 // "Modern Dark Professional"
 
+/* Core Palette */
+#define COLOR_OBSIDIAN  0xFF121212
+#define COLOR_CHARCOAL  0xFF242424
+#define COLOR_NEON_BLUE 0xFF00E5FF
+#define COLOR_GLASS_WHITE 0xFFE0E0E0 // Slightly greyish white for glass
+#define COLOR_TRANSLUCENT_BLACK 0xFF000000
+#define COLOR_PURE_WHITE 0xFFFFFFFF
+#define COLOR_PURE_BLACK 0xFF000000
+
+/* Window Colors */
+#define WIN_BG_COLOR     COLOR_CHARCOAL
+#define WIN_BORDER_COLOR COLOR_NEON_BLUE
+#define WIN_TITLE_COLOR  COLOR_PURE_WHITE
+#define WIN_TEXT_COLOR   COLOR_PURE_WHITE
+#define WIN_KEYWORD_COLOR COLOR_NEON_BLUE
+#define WIN_COMMENT_COLOR 0xFF808080
+
+/* Top Bar */
+#define TOP_BAR_TEXT_COLOR COLOR_PURE_WHITE
+#define TOP_BAR_ICON_COLOR COLOR_PURE_WHITE
+
+/* Taskbar */
+#define TASKBAR_TEXT_COLOR COLOR_PURE_WHITE
+#define TASKBAR_ACCENT_COLOR COLOR_NEON_BLUE
+
 /* Background Fill */
 #define WALLPAPER_CHAR ' ' // Clear
 #define WALLPAPER_ATTR ((BLACK << 4) | BLACK) // Solid Black

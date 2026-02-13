@@ -127,6 +127,16 @@ void put_pixel(int x, int y, uint32_t color) {
   *(uint32_t *)pixel_addr = color;
 }
 
+uint32_t get_pixel(int x, int y) {
+  if (x < 0 || x >= g_width || y < 0 || y >= g_height)
+    return 0;
+
+  uint8_t *pixel_addr =
+      (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
+  return *(uint32_t *)pixel_addr;
+}
+
+
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
   uint8_t *glyph = g_font + (unsigned char)c * 16;
 
@@ -295,3 +305,168 @@ void draw_box_rounded(int col, int row, int width, int height, char border_attr,
 }
 
 uint32_t vga_to_rgb(uint8_t attr) { return vga_palette[attr & 0x0F]; }
+
+/* Modern Graphics API (Pixel based) */
+
+void draw_rect_px(int x, int y, int w, int h, uint32_t color) {
+    for(int i = 0; i < h; i++) {
+        for(int j = 0; j < w; j++) {
+            put_pixel(x + j, y + i, color);
+        }
+    }
+}
+
+void draw_rect_alpha(int x, int y, int w, int h, uint32_t color, uint8_t alpha) {
+    uint8_t r = (color >> 16) & 0xFF;
+    uint8_t g = (color >> 8) & 0xFF;
+    uint8_t b = color & 0xFF;
+
+    for(int i = 0; i < h; i++) {
+        for(int j = 0; j < w; j++) {
+            int px = x + j;
+            int py = y + i;
+
+            if (px < 0 || px >= g_width || py < 0 || py >= g_height) continue;
+
+            uint32_t bg_color = get_pixel(px, py);
+            uint8_t bg_r = (bg_color >> 16) & 0xFF;
+            uint8_t bg_g = (bg_color >> 8) & 0xFF;
+            uint8_t bg_b = bg_color & 0xFF;
+
+            // Blend
+            uint8_t out_r = (r * alpha + bg_r * (255 - alpha)) / 255;
+            uint8_t out_g = (g * alpha + bg_g * (255 - alpha)) / 255;
+            uint8_t out_b = (b * alpha + bg_b * (255 - alpha)) / 255;
+
+            uint32_t out_color = 0xFF000000 | (out_r << 16) | (out_g << 8) | out_b;
+            put_pixel(px, py, out_color);
+        }
+    }
+}
+
+static int abs(int x) { return x < 0 ? -x : x; }
+
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    while (1) {
+        put_pixel(x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+void draw_circle(int xc, int yc, int r, uint32_t color) {
+    int x = 0, y = r;
+    int d = 3 - 2 * r;
+    while (y >= x) {
+        put_pixel(xc + x, yc + y, color);
+        put_pixel(xc - x, yc + y, color);
+        put_pixel(xc + x, yc - y, color);
+        put_pixel(xc - x, yc - y, color);
+        put_pixel(xc + y, yc + x, color);
+        put_pixel(xc - y, yc + x, color);
+        put_pixel(xc + y, yc - x, color);
+        put_pixel(xc - y, yc - x, color);
+        x++;
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        } else {
+            d = d + 4 * x + 6;
+        }
+    }
+}
+
+void draw_fill_circle(int xc, int yc, int r, uint32_t color) {
+    int x = 0, y = r;
+    int d = 3 - 2 * r;
+    while (y >= x) {
+        // Draw horizontal lines between points
+        for(int i = xc - x; i <= xc + x; i++) put_pixel(i, yc + y, color);
+        for(int i = xc - x; i <= xc + x; i++) put_pixel(i, yc - y, color);
+        for(int i = xc - y; i <= xc + y; i++) put_pixel(i, yc + x, color);
+        for(int i = xc - y; i <= xc + y; i++) put_pixel(i, yc - x, color);
+
+        x++;
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        } else {
+            d = d + 4 * x + 6;
+        }
+    }
+}
+
+void draw_rounded_rect(int x, int y, int w, int h, int r, uint32_t color) {
+    // Center Rect
+    draw_rect_px(x + r, y, w - 2 * r, h, color);
+    // Left Rect
+    draw_rect_px(x, y + r, r, h - 2 * r, color);
+    // Right Rect
+    draw_rect_px(x + w - r, y + r, r, h - 2 * r, color);
+
+    // Four Corners
+    // TL
+    int xc = x + r;
+    int yc = y + r;
+    // We can use a modified circle algorithm or just fill_circle quadrant logic.
+    // For simplicity, let's just use draw_fill_circle on corners but clipped?
+    // Actually, draw_fill_circle draws full circle.
+    // I will implement quadrant filling manually or just overdraw for now.
+    // Efficient way:
+
+    int cx = 0, cy = r;
+    int d = 3 - 2 * r;
+    while (cy >= cx) {
+        // Upper-Left Quadrant (xc, yc)
+        for(int i = xc - cx; i <= xc; i++) put_pixel(i, yc - cy, color);
+        for(int i = xc - cy; i <= xc; i++) put_pixel(i, yc - cx, color);
+
+        // Upper-Right Quadrant (x + w - r, y + r)
+        for(int i = x + w - r; i <= x + w - r + cx; i++) put_pixel(i, y + r - cy, color);
+        for(int i = x + w - r; i <= x + w - r + cy; i++) put_pixel(i, y + r - cx, color);
+
+        // Lower-Left Quadrant (x + r, y + h - r)
+        for(int i = x + r - cx; i <= x + r; i++) put_pixel(i, y + h - r + cy, color);
+        for(int i = x + r - cy; i <= x + r; i++) put_pixel(i, y + h - r + cx, color);
+
+        // Lower-Right Quadrant (x + w - r, y + h - r)
+        for(int i = x + w - r; i <= x + w - r + cx; i++) put_pixel(i, y + h - r + cy, color);
+        for(int i = x + w - r; i <= x + w - r + cy; i++) put_pixel(i, y + h - r + cx, color);
+
+        cx++;
+        if (d > 0) {
+            cy--;
+            d = d + 4 * (cx - cy) + 10;
+        } else {
+            d = d + 4 * cx + 6;
+        }
+    }
+}
+
+void draw_char_transparent(char c, int x, int y, uint32_t fg) {
+  uint8_t *glyph = g_font + (unsigned char)c * 16;
+
+  for (int row = 0; row < 16; row++) {
+    uint8_t data = glyph[row];
+    for (int col = 0; col < 8; col++) {
+      if ((data >> (7 - col)) & 1) {
+        put_pixel(x + col, y + row, fg);
+      }
+    }
+  }
+}
+
+void draw_string_px(int x, int y, const char* str, uint32_t fg) {
+    int cur_x = x;
+    while (*str) {
+        draw_char_transparent(*str, cur_x, y, fg);
+        cur_x += 8;
+        str++;
+    }
+}

@@ -81,6 +81,7 @@ void put_pixel(int x, int y, uint32_t color);
 uint32_t get_pixel(int x, int y);
 uint32_t vga_to_rgb(uint8_t attr);
 void swap_buffers();
+void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
 
 /* Modern Graphics API (Pixel based) */
 void draw_rect_px(int x, int y, int w, int h, uint32_t color);
@@ -89,5 +90,7 @@ void draw_line(int x0, int y0, int x1, int y1, uint32_t color);
 void draw_circle(int xc, int yc, int r, uint32_t color);
 void draw_rounded_rect(int x, int y, int w, int h, int r, uint32_t color);
 void draw_fill_circle(int xc, int yc, int r, uint32_t color); // Helper for rounded rect fill
+void draw_char_transparent(char c, int x, int y, uint32_t fg);
+void draw_string_px(int x, int y, const char* str, uint32_t fg);
 
 #endif
