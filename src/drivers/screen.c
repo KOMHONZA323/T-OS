@@ -49,6 +49,20 @@ void init_screen() {
     g_height = screen_info->height;
     g_bpp = screen_info->bpp;
     g_pitch = screen_info->pitch;
+
+    // SANITY CHECK: Pitch (Stride)
+    // If pitch is suspiciously large (e.g. > width * 8 bytes), assume it's garbage and fallback to packed width*4.
+    // This fixes issues where VBE reports huge stride values causing vertical banding/skipping.
+    int expected_pitch = g_width * 4;
+    if (g_pitch > expected_pitch * 2) {
+        // Force packed pitch if reported pitch is > 2x width (unreasonable padding)
+        g_pitch = expected_pitch;
+    }
+    // Also fix if pitch is too small (e.g. reported as 0 or pixels)
+    if (g_pitch < expected_pitch) {
+        g_pitch = expected_pitch;
+    }
+
     g_framebuffer = (uint32_t*)screen_info->framebuffer;
 
     // Allocate back buffer at a fixed memory location (e.g., 16MB mark)
