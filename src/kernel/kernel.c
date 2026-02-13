@@ -4,6 +4,8 @@
 #include "keyboard.h"
 #include "ata.h"
 #include "ports.h"
+#include "../drivers/timer.h"
+#include "idt.h"
 
 void draw_interface();
 void draw_wallpaper();
@@ -13,25 +15,41 @@ void draw_bottom_bar();
 void draw_window(int x, int y, int w, int h, const char* title, const char* content);
 void draw_loading_screen();
 void open_settings();
+void open_fps_settings();
+void init_idt(); // Defined in isr.c, linked later
 
 // Global state
 int show_settings = 0;
+int show_fps_settings = 0;
+int target_fps = 30; // Default 30 FPS
 
 void kernel_main(void) {
     // 1. Initialize Screen (VBE)
     init_screen();
 
-    // 2. Loading Screen
+    // 2. Initialize Interrupts & Timer
+    init_idt();
+    init_timer(1000); // 1000 Hz = 1ms per tick
+    __asm__ volatile("sti");
+
+    // 3. Loading Screen
     draw_loading_screen();
     clear_screen();
 
-    // 3. Main Loop
+    // 4. Main Loop
     while (1) {
+        uint32_t start_tick = get_tick_count();
+
         // Handle Input
         char c = get_char();
         if (c == 's') {
             show_settings = !show_settings;
+            show_fps_settings = 0;
             clear_screen(); // Clear to redraw background
+        } else if (c == 'f') {
+            show_fps_settings = !show_fps_settings;
+            show_settings = 0;
+            clear_screen();
         }
 
         // Logic for Settings
@@ -62,6 +80,14 @@ void kernel_main(void) {
             }
         }
 
+        // Logic for FPS Settings
+        if (show_fps_settings) {
+            if (c == '1') target_fps = 30;
+            else if (c == '2') target_fps = 45;
+            else if (c == '3') target_fps = 60;
+            else if (c == '4') target_fps = 120;
+        }
+
         // Draw
         draw_interface();
 
@@ -69,9 +95,38 @@ void kernel_main(void) {
             open_settings();
         }
 
-        // Delay to prevent CPU hogging and flicker (and allow input polling to feel responsive enough)
-        // delay(100);
+        if (show_fps_settings) {
+            open_fps_settings();
+        }
+
+        // FPS Limiter (using PIT)
+        uint32_t elapsed = get_tick_count() - start_tick;
+        uint32_t frame_time = 1000 / target_fps;
+        if (elapsed < frame_time) {
+            uint32_t wait_ticks = frame_time - elapsed;
+            uint32_t end_wait = get_tick_count() + wait_ticks;
+            while (get_tick_count() < end_wait) {
+                // Busy wait or halt
+                __asm__ volatile("hlt");
+            }
+        }
     }
+}
+
+void open_fps_settings() {
+    draw_window(10, 5, 40, 15, " FPS Settings ",
+        "Select FPS Limit:\n\n"
+        "Press '1': 30 FPS\n"
+        "Press '2': 45 FPS\n"
+        "Press '3': 60 FPS\n"
+        "Press '4': 120 FPS\n\n"
+        "Current: Variable"); // Ideally we show the current value
+
+    // Simple way to show current selection
+    if (target_fps == 30) kprint_at_attr("Current: 30 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 45) kprint_at_attr("Current: 45 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 60) kprint_at_attr("Current: 60 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 120) kprint_at_attr("Current: 120", 12, 16, WIN_ACCENT_ATTR);
 }
 
 void draw_interface() {
