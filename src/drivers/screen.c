@@ -11,7 +11,7 @@ int g_width = 0;
 int g_height = 0;
 int g_pitch = 0;
 int g_bpp = 0;
-int g_logical_pitch = 0; // [FIX] Added missing declaration
+int g_logical_pitch = 0;
 
 /* Current cursor position */
 int cursor_x = 0;
@@ -49,30 +49,13 @@ void init_screen() {
   g_width = screen_info->width;
   g_height = screen_info->height;
   g_bpp = screen_info->bpp;
-  g_pitch = screen_info->pitch;
 
-  // SANITY CHECK: Pitch (Stride)
-  int expected_pitch = g_width * 4;
-  if (g_pitch > expected_pitch * 2) {
-    g_pitch = expected_pitch;
-  }
-  if (g_pitch < expected_pitch) {
-    g_pitch = expected_pitch;
-  }
+  // Use the hardware pitch provided by Stage 2 (which reads VBE mode info correctly)
+  g_pitch = screen_info->pitch;
 
   g_framebuffer = (uint32_t *)screen_info->framebuffer;
 
-  // Attempt to read better pitch from raw MODE_INFO_BLOCK
-  uint8_t *mode_info = (uint8_t *)0x3000;
-  uint16_t bytes_per_scanline = *(uint16_t *)(mode_info + 16);
-  uint16_t lin_bytes_per_scanline = *(uint16_t *)(mode_info + 50);
-
-  if (bytes_per_scanline > g_pitch)
-    g_pitch = bytes_per_scanline;
-  if (lin_bytes_per_scanline > g_pitch)
-    g_pitch = lin_bytes_per_scanline;
-
-  // Logical Pitch (Back Buffer is always packed 32-bit pixels)
+  // Logical Pitch (Back Buffer is always packed 32-bit pixels: width * 4)
   g_logical_pitch = g_width * 4;
 
   // Allocate back buffer at 16MB mark
@@ -90,10 +73,10 @@ void init_screen() {
 
 void clear_screen() {
   // Fill with Black
-  int size = g_width * g_height;
-  for (int i = 0; i < size; i++) {
-    g_back_buffer[i] = 0xFF000000;
-  }
+  // Use logical pitch for back buffer
+  int size_bytes = g_height * g_logical_pitch;
+  memory_set((char *)g_back_buffer, 0, size_bytes);
+
   cursor_x = 0;
   cursor_y = 0;
 }
@@ -103,7 +86,6 @@ void put_pixel(int x, int y, uint32_t color) {
     return;
 
   // Draw to Back Buffer using LOGICAL pitch (Packed)
-  // [FIX] Removed duplicate function and consolidated logic
   uint8_t *pixel_addr =
       (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
   *(uint32_t *)pixel_addr = color;
@@ -121,14 +103,13 @@ void swap_buffers() {
 
   // Copy back buffer to front buffer row by row
   for (int y = 0; y < g_height; y++) {
-    // Source: Back buffer (Packed using g_logical_pitch or width*4)
+    // Source: Back buffer (Packed using g_logical_pitch)
     char *src = (char *)g_back_buffer + (y * g_logical_pitch);
     // Dest: Front buffer (Hardware Pitch)
     char *dst = (char *)g_framebuffer + (y * g_pitch);
 
     memory_copy(src, dst, g_width * 4);
   }
-  // [FIX] Removed the broken second loop with undefined src_ptr/dst_ptr
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -197,7 +178,7 @@ void kprint_backspace() {
 }
 
 void scroll_screen() {
-  int bytes_per_line = g_logical_pitch; // [FIX] Use g_logical_pitch
+  int bytes_per_line = g_logical_pitch;
   int copy_rows = g_height - 16;
   int copy_size = copy_rows * bytes_per_line;
 
