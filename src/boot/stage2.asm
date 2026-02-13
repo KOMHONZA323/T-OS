@@ -235,7 +235,7 @@ set_vbe_mode:
     ; Check Selection
     mov al, [SELECTED_RES]
     cmp al, 0xFF
-    je auto_detect
+    je find_best_mode ; Auto Detect
     cmp al, 0
     je find_best_mode ; Auto Detect
     cmp al, 1

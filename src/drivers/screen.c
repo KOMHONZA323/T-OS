@@ -97,6 +97,15 @@ void clear_screen() {
   cursor_y = 0;
 }
 
+void wait_vsync() {
+    // Wait for vertical retrace to start
+    // Port 0x3DA, bit 3 (Vertical Retrace)
+    // First, wait until we are NOT in retrace (in case we called during one)
+    while (port_byte_in(0x3DA) & 8);
+    // Then wait until retrace STARTS
+    while (!(port_byte_in(0x3DA) & 8));
+}
+
 void swap_buffers() {
   // No-op when drawing directly into VRAM.
   if (g_back_buffer == g_framebuffer)
