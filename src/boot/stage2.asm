@@ -319,8 +319,23 @@ next_mode:
     mov [es:di+2], ax
     mov al, [MODE_INFO_BLOCK + 25] ; BPP
     mov [es:di+4], al
+
+    ; VBE 3.0+ Pitch Check
+    mov ax, [VBE_INFO_BLOCK + 4]
+    cmp ax, 0x0300
+    jl use_legacy_pitch
+
+    mov ax, [MODE_INFO_BLOCK + 50] ; LinBytesPerScanLine
+    test ax, ax
+    jz use_legacy_pitch
+    jmp save_pitch
+
+use_legacy_pitch:
     mov ax, [MODE_INFO_BLOCK + 16] ; Pitch (Bytes per scanline)
+
+save_pitch:
     mov [es:di+5], ax
+
     mov eax, [MODE_INFO_BLOCK + 40] ; Framebuffer (Phys Addr)
     mov [es:di+7], eax
 
