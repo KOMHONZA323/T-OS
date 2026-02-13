@@ -6,8 +6,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffreestanding -m32 -g -fno-pie -fno-stack-p
 
 # Paths
 set(BUILD_DIR "${CMAKE_BINARY_DIR}")
-set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/boot_sect.asm")
-set(STAGE2_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage2.asm")
+set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage1/boot_sect.asm")
+set(STAGE2_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage2/stage2.asm")
 set(KERNEL_ENTRY "${CMAKE_SOURCE_DIR}/src/kernel/kernel_entry.asm")
 set(INTERRUPT_ASM "${CMAKE_SOURCE_DIR}/src/kernel/interrupt.asm")
 
@@ -21,14 +21,22 @@ set(OS_IMAGE "${BUILD_DIR}/t-os.bin")
 # 1. Compile Bootloader (Stage 1)
 add_custom_command(OUTPUT ${BOOT_BIN}
     COMMAND nasm -f bin ${BOOT_SRC} -o ${BOOT_BIN} -I ${CMAKE_SOURCE_DIR}/
-    DEPENDS ${BOOT_SRC} "${CMAKE_SOURCE_DIR}/src/boot/disk_load.asm"
+    DEPENDS ${BOOT_SRC} "${CMAKE_SOURCE_DIR}/src/boot/stage1/disk_load.asm"
     COMMENT "Assembling Bootloader Stage 1"
 )
 
 # 2. Compile Stage 2 Bootloader
 add_custom_command(OUTPUT ${STAGE2_BIN}
     COMMAND nasm -f bin ${STAGE2_SRC} -o ${STAGE2_BIN} -I ${CMAKE_SOURCE_DIR}/
-    DEPENDS ${STAGE2_SRC} "${CMAKE_SOURCE_DIR}/src/boot/print_string.asm" "${CMAKE_SOURCE_DIR}/src/boot/print_string_pm.asm" "${CMAKE_SOURCE_DIR}/src/boot/switch_to_pm.asm" "${CMAKE_SOURCE_DIR}/src/boot/gdt.asm"
+    DEPENDS ${STAGE2_SRC}
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/print_string_pm.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/switch_to_pm.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/gdt.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/utils.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/disk.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/vbe.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/menu.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/data.asm"
     COMMENT "Assembling Bootloader Stage 2"
 )
 
