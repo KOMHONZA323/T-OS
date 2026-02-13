@@ -1,8 +1,25 @@
 #include "utils.h"
 
 void memory_copy(char *source, char *dest, int nbytes) {
-    int i;
-    for (i = 0; i < nbytes; i++) {
+    // Try to copy 32-bit chunks if pointers are aligned (common for framebuffers)
+    if (nbytes >= 4 && ((uint32_t)source & 3) == 0 && ((uint32_t)dest & 3) == 0) {
+        int n_dwords = nbytes / 4;
+        uint32_t *s = (uint32_t*)source;
+        uint32_t *d = (uint32_t*)dest;
+
+        for (int i = 0; i < n_dwords; i++) {
+            d[i] = s[i];
+        }
+
+        // Adjust for remaining bytes
+        int offset = n_dwords * 4;
+        source += offset;
+        dest += offset;
+        nbytes -= offset;
+    }
+
+    // Copy remaining bytes (or all bytes if unaligned)
+    for (int i = 0; i < nbytes; i++) {
         *(dest + i) = *(source + i);
     }
 }
