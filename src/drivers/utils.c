@@ -7,12 +7,18 @@ void memory_copy(char *source, char *dest, int nbytes) {
         uint32_t *s = (uint32_t*)source;
         uint32_t *d = (uint32_t*)dest;
 
-        for (int i = 0; i < n_dwords; i++) {
-            d[i] = s[i];
-        }
+        // Calculate offset before n_dwords is clobbered by rep movsl
+        int offset = n_dwords * 4;
+
+        // Optimized 32-bit copy using rep movsl
+        __asm__ volatile (
+            "rep movsl"
+            : "+S" (s), "+D" (d), "+c" (n_dwords)
+            :
+            : "memory"
+        );
 
         // Adjust for remaining bytes
-        int offset = n_dwords * 4;
         source += offset;
         dest += offset;
         nbytes -= offset;
