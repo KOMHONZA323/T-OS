@@ -55,6 +55,10 @@ void init_screen() {
 
   g_framebuffer = (uint32_t *)screen_info->framebuffer;
 
+  // Use direct rendering into VRAM to avoid corruption from assuming a fixed
+  // back-buffer address/size at high resolutions (e.g. 4K).
+  g_back_buffer = g_framebuffer;
+  g_logical_pitch = g_pitch;
   // Logical Pitch (Back Buffer is always packed 32-bit pixels: width * 4)
   g_logical_pitch = g_width * 4;
 
@@ -99,6 +103,16 @@ void wait_vsync() {
 }
 
 void swap_buffers() {
+  // No-op when drawing directly into VRAM.
+  if (g_back_buffer == g_framebuffer)
+    return;
+
+    // Copy back buffer to front buffer row by row
+    // handling potential pitch mismatch (padding)
+
+    for (int y = 0; y < g_height; y++) {
+        // Source: Back buffer (Packed)
+        // Dest: Front buffer (Hardware Pitch)
   wait_vsync();
 
   // Copy back buffer to front buffer row by row
