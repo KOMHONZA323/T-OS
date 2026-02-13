@@ -122,12 +122,8 @@ void swap_buffers() {
   uint8_t *dst_ptr = (uint8_t *)g_framebuffer;
 
   for (int y = 0; y < g_height; y++) {
-    uint32_t *s = (uint32_t *)src_ptr;
-    uint32_t *d = (uint32_t *)dst_ptr;
-
-    for (int x = 0; x < g_width; x++) {
-      d[x] = s[x];
-    }
+    // Use optimized memory_copy (rep movsl) for row transfer
+    memory_copy((char *)src_ptr, (char *)dst_ptr, g_width * 4);
 
     src_ptr += g_logical_pitch;
     dst_ptr += g_pitch;
