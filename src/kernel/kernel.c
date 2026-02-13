@@ -23,95 +23,43 @@ int show_fps_settings = 0;
 int target_fps = 30; // Default 30 FPS
 
 void kernel_main(void) {
-    // 1. Initialize Screen (VBE)
-    init_screen();
+  // 1. Initialize Screen (VBE)
+  init_screen();
 
-    // 2. Initialize Interrupts & Timer
-    init_idt();
-    init_timer(1000); // 1000 Hz = 1ms per tick
-    __asm__ volatile("sti");
+  // 2. Loading Screen
+  draw_loading_screen();
+  clear_screen();
 
-    // 3. Loading Screen
-    draw_loading_screen();
-    clear_screen();
+  // 3. Main Loop
+  while (1) {
+    // Handle Input
+    char c = get_char();
+    if (c == 's') {
+      show_settings = !show_settings;
+      clear_screen(); // Clear to redraw background
+    }
 
-    // 4. Main Loop
-    while (1) {
-        uint32_t start_tick = get_tick_count();
+    // Logic for Settings
+    if (show_settings) {
+      // Check for selection
+      if (c >= '0' && c <= '5') {
+        uint8_t config[512] = {0};
+        config[0] = 0xAB; // Magic
 
-        // Handle Input
-        char c = get_char();
-        if (c == 's') {
-            show_settings = !show_settings;
-            show_fps_settings = 0;
-            clear_screen(); // Clear to redraw background
-        } else if (c == 'f') {
-            show_fps_settings = !show_fps_settings;
-            show_settings = 0;
-            clear_screen();
-        }
+        // 0=Auto, 1=720p, 2=1080p, 3=1440p, 4=1920p, 5=4K
+        config[1] = c - '0';
 
-        // Logic for Settings
-        if (show_settings) {
-            // Check for 1, 2, 3 selection
-            if (c == '1') {
-                // 720p
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; // Magic
-                config[1] = 0;    // 720p
-                ata_write_sector(2879, config);
-                // Reboot
-                port_byte_out(0x64, 0xFE);
-            } else if (c == '2') {
-                // 1080p
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; // Magic
-                config[1] = 1;    // 1080p
-                ata_write_sector(2879, config);
-                port_byte_out(0x64, 0xFE);
-            } else if (c == '3') {
-                // 1440p
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; // Magic
-                config[1] = 2;    // 1440p
-                ata_write_sector(2879, config);
-                port_byte_out(0x64, 0xFE);
-            }
-        }
+        ata_write_sector(2879, config);
+        // Reboot via Keyboard Controller
+        port_byte_out(0x64, 0xFE);
+      }
+    }
 
-        // Logic for FPS Settings
-        if (show_fps_settings) {
-            if (c == '1') target_fps = 30;
-            else if (c == '2') target_fps = 45;
-            else if (c == '3') target_fps = 60;
-            else if (c == '4') target_fps = 120;
-        }
+    // Draw
+    draw_interface();
 
-        // Draw
-        draw_interface();
-
-        if (show_settings) {
-            open_settings();
-        }
-
-        if (show_fps_settings) {
-            open_fps_settings();
-        }
-
-        // Swap Buffers (VSync)
-        swap_buffers();
-
-        // FPS Limiter (using PIT)
-        uint32_t elapsed = get_tick_count() - start_tick;
-        uint32_t frame_time = 1000 / target_fps;
-        if (elapsed < frame_time) {
-            uint32_t wait_ticks = frame_time - elapsed;
-            uint32_t end_wait = get_tick_count() + wait_ticks;
-            while (get_tick_count() < end_wait) {
-                // Busy wait or halt
-                __asm__ volatile("hlt");
-            }
-        }
+    if (show_settings) {
+      open_settings();
     }
 
     swap_buffers();
@@ -261,25 +209,25 @@ void open_settings() {
 }
 
 void draw_loading_screen() {
-    int center_col = MAX_COLS / 2 - 10;
-    int center_row = MAX_ROWS / 2 - 2;
+  int center_col = MAX_COLS / 2 - 10;
+  int center_row = MAX_ROWS / 2 - 2;
 
-    kprint_at_attr("       T-OS       ", center_col, center_row, WIN_ACCENT_ATTR);
-    kprint_at_attr(" System Loading...", center_col, center_row + 2, WIN_CONTENT_ATTR);
+  kprint_at_attr("       T-OS       ", center_col, center_row, WIN_ACCENT_ATTR);
+  kprint_at_attr(" System Loading...", center_col, center_row + 2,
+                 WIN_CONTENT_ATTR);
 
-    int bar_width = 20;
-    int bar_col = center_col;
-    int bar_row = center_row + 4;
+  int bar_width = 20;
+  int bar_col = center_col;
+  int bar_row = center_row + 4;
 
-    kprint_at_attr("[", bar_col - 1, bar_row, WIN_CONTENT_ATTR);
-    kprint_at_attr("]", bar_col + bar_width, bar_row, WIN_CONTENT_ATTR);
+  kprint_at_attr("[", bar_col - 1, bar_row, WIN_CONTENT_ATTR);
+  kprint_at_attr("]", bar_col + bar_width, bar_row, WIN_CONTENT_ATTR);
 
-    for (int i = 0; i < bar_width; i++) {
-        char progress[2] = { '=', 0 };
-        kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
-        swap_buffers(); // Force update during animation
-        delay(3000);
-    }
-
-    delay(5000);
+  for (int i = 0; i < bar_width; i++) {
+    char progress[2] = {'=', 0};
+    kprint_at_attr(progress, bar_col + i, bar_row, WIN_ACCENT_ATTR);
+    swap_buffers();
+    delay(3000);
+  }
+  delay(5000);
 }

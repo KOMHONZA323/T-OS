@@ -237,6 +237,8 @@ set_vbe_mode:
     cmp al, 0xFF
     je find_best_mode ; Auto Detect
     cmp al, 0
+    je find_best_mode ; Auto Detect
+    cmp al, 1
     je target_720p
     cmp al, 2
     je target_1080p

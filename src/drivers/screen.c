@@ -3,10 +3,12 @@
 #include "utils.h"
 
 /* Global Screen Info */
-ScreenInfo *screen_info = (ScreenInfo*)0x5000;
-uint8_t *g_font = (uint8_t*)0xA000; // BIOS Font 8x16
-uint32_t *g_framebuffer = 0;
-uint32_t *g_back_buffer = 0;
+ScreenInfo *screen_info = (ScreenInfo *)0x5000;
+uint8_t *g_font = (uint8_t *)0xA000;             // BIOS Font 8x16
+uint32_t *g_framebuffer = 0; // VRAM Pointer
+uint32_t *g_back_buffer = 0; // Rendering buffer (defaults to VRAM)
+
+/* Dimensions */
 int g_width = 0;
 int g_height = 0;
 int g_bpp = 0;
@@ -52,33 +54,29 @@ void scroll_screen();
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
 
 void init_screen() {
-    g_width = screen_info->width;
-    g_height = screen_info->height;
-    g_bpp = screen_info->bpp;
-    g_pitch = screen_info->pitch;
+  g_width = screen_info->width;
+  g_height = screen_info->height;
+  g_bpp = screen_info->bpp;
+  g_framebuffer = (uint32_t *)screen_info->framebuffer;
 
-    // SANITY CHECK: Pitch (Stride)
-    // If pitch is suspiciously large (e.g. > width * 8 bytes), assume it's garbage and fallback to packed width*4.
-    // This fixes issues where VBE reports huge stride values causing vertical banding/skipping.
-    int expected_pitch = g_width * 4;
-    if (g_pitch > expected_pitch * 2) {
-        // Force packed pitch if reported pitch is > 2x width (unreasonable padding)
-        g_pitch = expected_pitch;
-    }
-    // Also fix if pitch is too small (e.g. reported as 0 or pixels)
-    if (g_pitch < expected_pitch) {
-        g_pitch = expected_pitch;
-    }
+  // Hardware Pitch (from VBE)
+  g_pitch = screen_info->pitch;
 
-    g_framebuffer = (uint32_t*)screen_info->framebuffer;
+  // Logical Pitch (Back Buffer is always packed 32-bit pixels)
+  g_logical_pitch = g_width * 4;
 
-    // Allocate back buffer at a fixed memory location (e.g., 16MB mark)
-    // Assuming we have enough RAM. 1920x1080x4 ~= 8MB.
-    // 0x1000000 (16MB) is usually safe in QEMU with default RAM (128MB+).
-    g_back_buffer = (uint32_t*)0x1000000;
+  // Safety: If VBE reports a pitch smaller than width*4, it's wrong.
+  if (g_pitch < g_logical_pitch) {
+    g_pitch = g_logical_pitch;
+  }
 
-    MAX_COLS = g_width / 8;
-    MAX_ROWS = g_height / 16;
+  MAX_COLS = g_width / 8;
+  MAX_ROWS = g_height / 16;
+
+  // Use direct rendering into VRAM to avoid corruption from assuming a fixed
+  // back-buffer address/size at high resolutions (e.g. 4K).
+  g_back_buffer = g_framebuffer;
+  g_logical_pitch = g_pitch;
 
   // Reset cursor
   cursor_x = 0;
@@ -88,27 +86,15 @@ void init_screen() {
 }
 
 void clear_screen() {
-    // Fill with Black
-    // Optimized: assume 32-bit aligned framebuffer
-    int size = g_width * g_height;
-    for (int i = 0; i < size; i++) {
-        g_back_buffer[i] = 0xFF000000;
+  for (int y = 0; y < g_height; y++) {
+    uint32_t *row = (uint32_t *)((uint8_t *)g_back_buffer + (y * g_logical_pitch));
+    for (int x = 0; x < g_width; x++) {
+      row[x] = 0xFF000000;
     }
   }
 
   cursor_x = 0;
   cursor_y = 0;
-}
-
-void put_pixel(int x, int y, uint32_t color) {
-    if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
-
-    // Write to Back Buffer (Packed, width * 4)
-    // We decouple back buffer stride from VBE hardware pitch to fix chunking artifacts.
-    // Back buffer is always width * 4 bytes per row.
-
-    // uint32_t* arithmetic: index = y * width + x
-    g_back_buffer[y * g_width + x] = color;
 }
 
 void wait_vsync() {
@@ -121,22 +107,35 @@ void wait_vsync() {
 }
 
 void swap_buffers() {
-    // Wait for VSync before swapping to prevent tearing/flickering
-    wait_vsync();
+  // No-op when drawing directly into VRAM.
+  if (g_back_buffer == g_framebuffer)
+    return;
 
-    // Copy back buffer to front buffer row by row
-    // handling potential pitch mismatch (padding)
+  uint8_t *src_ptr = (uint8_t *)g_back_buffer;
+  uint8_t *dst_ptr = (uint8_t *)g_framebuffer;
 
-    for (int y = 0; y < g_height; y++) {
-        // Source: Back buffer (Packed)
-        // Dest: Front buffer (Hardware Pitch)
+  for (int y = 0; y < g_height; y++) {
+    uint32_t *s = (uint32_t *)src_ptr;
+    uint32_t *d = (uint32_t *)dst_ptr;
 
-        // Use char* for byte arithmetic
-        char *src = (char*)g_back_buffer + (y * g_width * 4);
-        char *dst = (char*)g_framebuffer + (y * g_pitch);
-
-        memory_copy(src, dst, g_width * 4);
+    for (int x = 0; x < g_width; x++) {
+      d[x] = s[x];
     }
+
+    src_ptr += g_logical_pitch;
+    dst_ptr += g_pitch;
+  }
+}
+
+void put_pixel(int x, int y, uint32_t color) {
+  if (x < 0 || x >= g_width || y < 0 || y >= g_height)
+    return;
+
+  // Draw to Back Buffer using LOGICAL pitch (Packed)
+  // No gaps, clean math.
+  uint8_t *pixel_addr =
+      (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
+  *(uint32_t *)pixel_addr = color;
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
@@ -208,23 +207,23 @@ void kprint_backspace() {
 }
 
 void scroll_screen() {
-    // Scroll up 16 pixels (one row)
-    // Operate strictly on Back Buffer (Packed)
+  // Scroll operates purely on the Back Buffer
+  // So we use g_logical_pitch everywhere here
 
-    int bytes_per_line = g_width * 4; // Packed
-    int copy_rows = g_height - 16;
-    int copy_size = copy_rows * bytes_per_line;
+  // Copy (Height - 16) lines from y=16 to y=0
+  int bytes_per_line = g_logical_pitch;
+  int bytes_to_copy = (g_height - 16) * bytes_per_line;
 
-    // Source: line 16
-    // Dest: line 0
-    uint8_t *src = (uint8_t*)g_back_buffer + (16 * bytes_per_line);
-    uint8_t *dst = (uint8_t*)g_back_buffer;
+  uint8_t *src = (uint8_t *)g_back_buffer + (16 * bytes_per_line);
+  uint8_t *dst = (uint8_t *)g_back_buffer;
 
-    memory_copy((char*)src, (char*)dst, copy_size);
+  // Since back buffer is packed, we can just memcpy the block
+  memory_copy((char *)src, (char *)dst, bytes_to_copy);
 
-    // Clear last line (16 pixels high)
-    uint8_t *last_line = (uint8_t*)g_back_buffer + (copy_rows * bytes_per_line);
-    memory_set((char*)last_line, 0, 16 * bytes_per_line);
+  // Clear last line
+  uint8_t *last_line =
+      (uint8_t *)g_back_buffer + ((g_height - 16) * bytes_per_line);
+  memory_set((char *)last_line, 0, 16 * bytes_per_line);
 }
 
 /* TUI Functions */
