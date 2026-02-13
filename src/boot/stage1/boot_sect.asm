@@ -23,8 +23,8 @@ STAGE2_OFFSET equ 0x7E00
     ; Jump to Stage 2
     jmp STAGE2_OFFSET
 
-%include "src/boot/disk_load.asm"
-%include "src/boot/print_string.asm"
+%include "src/boot/stage1/disk_load.asm"
+%include "src/boot/stage1/print_string.asm"
 
 ; Variables
 BOOT_DRIVE db 0
