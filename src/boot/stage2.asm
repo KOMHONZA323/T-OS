@@ -234,6 +234,8 @@ set_vbe_mode:
 
     ; Check Selection
     mov al, [SELECTED_RES]
+    cmp al, 0xFF
+    je auto_detect
     cmp al, 0
     je find_best_mode ; Auto Detect
     cmp al, 1
@@ -461,6 +463,9 @@ HEADS db 2
 MSG_MENU db "Select Resolution:", 13, 10, "0. Auto (Best)", 13, 10, "1. 720p", 13, 10, "2. 1080p", 13, 10, "3. 1440p", 13, 10, "4. 1920p", 13, 10, "5. 4K", 13, 10, 0
 MSG_VBE_ERR db "VBE Error!", 0
 MSG_DISK_ERR db "Disk Error!", 0
+
+BEST_MODE dw 0
+BEST_PIXELS dd 0
 
 ; Buffers
 CONFIG_BUFFER:

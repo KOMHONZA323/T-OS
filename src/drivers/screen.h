@@ -64,6 +64,7 @@ extern uint32_t *g_back_buffer;
 void init_screen();
 void swap_buffers();
 void clear_screen();
+void swap_buffers();
 void kprint_at(char *message, int col, int row);
 void kprint_at_attr(char *message, int col, int row, char attr);
 void kprint(char *message);

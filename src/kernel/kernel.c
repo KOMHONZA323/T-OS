@@ -14,9 +14,13 @@ void draw_window(int x, int y, int w, int h, const char *title,
                  const char *content);
 void draw_loading_screen();
 void open_settings();
+void open_fps_settings();
+void init_idt(); // Defined in isr.c, linked later
 
 // Global state
 int show_settings = 0;
+int show_fps_settings = 0;
+int target_fps = 30; // Default 30 FPS
 
 void kernel_main(void) {
   // 1. Initialize Screen (VBE)
@@ -63,6 +67,22 @@ void kernel_main(void) {
     // Delay to prevent CPU hogging
     delay(1000);
   }
+}
+
+void open_fps_settings() {
+    draw_window(10, 5, 40, 15, " FPS Settings ",
+        "Select FPS Limit:\n\n"
+        "Press '1': 30 FPS\n"
+        "Press '2': 45 FPS\n"
+        "Press '3': 60 FPS\n"
+        "Press '4': 120 FPS\n\n"
+        "Current: Variable"); // Ideally we show the current value
+
+    // Simple way to show current selection
+    if (target_fps == 30) kprint_at_attr("Current: 30 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 45) kprint_at_attr("Current: 45 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 60) kprint_at_attr("Current: 60 ", 12, 16, WIN_ACCENT_ATTR);
+    else if (target_fps == 120) kprint_at_attr("Current: 120", 12, 16, WIN_ACCENT_ATTR);
 }
 
 void draw_interface() {

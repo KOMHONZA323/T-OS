@@ -9,10 +9,12 @@ set(BUILD_DIR "${CMAKE_BINARY_DIR}")
 set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/boot_sect.asm")
 set(STAGE2_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage2.asm")
 set(KERNEL_ENTRY "${CMAKE_SOURCE_DIR}/src/kernel/kernel_entry.asm")
+set(INTERRUPT_ASM "${CMAKE_SOURCE_DIR}/src/kernel/interrupt.asm")
 
 set(BOOT_BIN "${BUILD_DIR}/boot.bin")
 set(STAGE2_BIN "${BUILD_DIR}/stage2.bin")
 set(KERNEL_ENTRY_OBJ "${BUILD_DIR}/kernel_entry.o")
+set(INTERRUPT_OBJ "${BUILD_DIR}/interrupt.o")
 set(KERNEL_BIN "${BUILD_DIR}/kernel.bin")
 set(OS_IMAGE "${BUILD_DIR}/t-os.bin")
 
@@ -37,6 +39,13 @@ add_custom_command(OUTPUT ${KERNEL_ENTRY_OBJ}
     COMMENT "Assembling Kernel Entry"
 )
 
+# 3.1 Assemble Interrupt Handling
+add_custom_command(OUTPUT ${INTERRUPT_OBJ}
+    COMMAND nasm -f elf ${INTERRUPT_ASM} -o ${INTERRUPT_OBJ}
+    DEPENDS ${INTERRUPT_ASM}
+    COMMENT "Assembling Interrupt Handlers"
+)
+
 # 4. Compile Kernel Sources
 file(GLOB_RECURSE KERNEL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/*.c" "${CMAKE_SOURCE_DIR}/src/drivers/*.c")
 
@@ -56,8 +65,8 @@ endforeach()
 # 5. Link Kernel
 # Note: Kernel loaded at 0x10000 (64KB) to avoid conflict with Stage 2
 add_custom_command(OUTPUT ${KERNEL_BIN}
-    COMMAND ld -o ${KERNEL_BIN} -Ttext 0x10000 ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJECTS} --oformat binary -m elf_i386
-    DEPENDS ${KERNEL_ENTRY_OBJ} ${KERNEL_OBJECTS}
+    COMMAND ld -o ${KERNEL_BIN} -Ttext 0x10000 ${KERNEL_ENTRY_OBJ} ${INTERRUPT_OBJ} ${KERNEL_OBJECTS} --oformat binary -m elf_i386
+    DEPENDS ${KERNEL_ENTRY_OBJ} ${INTERRUPT_OBJ} ${KERNEL_OBJECTS}
     COMMENT "Linking Kernel"
 )
 
