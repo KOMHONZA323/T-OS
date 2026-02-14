@@ -54,4 +54,13 @@
 #define WIN_CONTENT_ATTR ((BLACK << 4) | LIGHT_GREY) // Surface color
 #define WIN_ACCENT_ATTR ((BLACK << 4) | LIGHT_BLUE)
 
+/* Modern Dark Professional Theme (ARGB 8888) */
+#define COLOR_OBSIDIAN 0xFF121212
+#define COLOR_CHARCOAL 0xFF1E1E1E
+#define COLOR_NEON_BLUE 0xFF00E5FF
+#define COLOR_GLASS_WHITE 0x40FFFFFF
+#define COLOR_TOP_BAR_BG 0xD0000000 // Translucent Black
+#define COLOR_TASKBAR_BG 0xB01E1E1E // Semi-transparent Frosted Glass
+#define COLOR_TOP_BAR_TEXT 0xFFFFFFFF
+
 #endif
