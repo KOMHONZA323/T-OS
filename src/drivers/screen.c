@@ -107,12 +107,6 @@ void swap_buffers() {
   if (g_back_buffer == g_framebuffer)
     return;
 
-    // Copy back buffer to front buffer row by row
-    // handling potential pitch mismatch (padding)
-
-    for (int y = 0; y < g_height; y++) {
-        // Source: Back buffer (Packed)
-        // Dest: Front buffer (Hardware Pitch)
   wait_vsync();
 
   // Copy back buffer to front buffer row by row
@@ -276,3 +270,188 @@ void draw_box_rounded(int col, int row, int width, int height, char border_attr,
 }
 
 uint32_t vga_to_rgb(uint8_t attr) { return vga_palette[attr & 0x0F]; }
+
+/* Advanced Graphics Primitives */
+
+static inline int abs(int x) { return x < 0 ? -x : x; }
+
+void put_pixel_alpha(int x, int y, uint32_t color) {
+    if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
+
+    uint8_t a = (color >> 24) & 0xFF;
+    if (a == 0) return;
+    if (a == 255) {
+        put_pixel(x, y, color);
+        return;
+    }
+
+    uint8_t *pixel_addr = (uint8_t *)g_back_buffer + (y * g_logical_pitch) + (x * 4);
+    uint32_t bg = *(uint32_t *)pixel_addr;
+
+    uint8_t r = (color >> 16) & 0xFF;
+    uint8_t g = (color >> 8) & 0xFF;
+    uint8_t b = color & 0xFF;
+
+    uint8_t bg_r = (bg >> 16) & 0xFF;
+    uint8_t bg_g = (bg >> 8) & 0xFF;
+    uint8_t bg_b = bg & 0xFF;
+
+    uint8_t out_r = (r * a + bg_r * (255 - a)) / 255;
+    uint8_t out_g = (g * a + bg_g * (255 - a)) / 255;
+    uint8_t out_b = (b * a + bg_b * (255 - a)) / 255;
+
+    *(uint32_t *)pixel_addr = (0xFF << 24) | (out_r << 16) | (out_g << 8) | out_b;
+}
+
+void draw_rect_px(int x, int y, int width, int height, uint32_t color) {
+    if (x < 0) { width += x; x = 0; }
+    if (y < 0) { height += y; y = 0; }
+    if (x + width > g_width) width = g_width - x;
+    if (y + height > g_height) height = g_height - y;
+    if (width <= 0 || height <= 0) return;
+
+    // Check for alpha in color
+    uint8_t a = (color >> 24) & 0xFF;
+    if (a < 255) {
+        for (int r = 0; r < height; r++) {
+            for (int c = 0; c < width; c++) {
+                put_pixel_alpha(x + c, y + r, color);
+            }
+        }
+        return;
+    }
+
+    for (int r = 0; r < height; r++) {
+        uint32_t* line = (uint32_t*)((uint8_t*)g_back_buffer + (y + r) * g_logical_pitch);
+        for (int c = 0; c < width; c++) {
+            line[x + c] = color;
+        }
+    }
+}
+
+void draw_rect_alpha(int x, int y, int width, int height, uint32_t color) {
+    draw_rect_px(x, y, width, height, color);
+}
+
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    while (1) {
+        put_pixel_alpha(x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+// Helper for rounded rect corners (filled quadrant)
+static void draw_circle_quadrant_fill(int x0, int y0, int radius, int quadrant, uint32_t color) {
+    int x = radius;
+    int y = 0;
+    int err = 0;
+
+    // Fill logic: draw horizontal lines between circle edge and center axis
+    while (x >= y) {
+        // Quadrant 0: Bottom Right
+        if (quadrant == 0) {
+            draw_line(x0, y0 + y, x0 + x, y0 + y, color);
+            draw_line(x0, y0 + x, x0 + y, y0 + x, color);
+        }
+        // Quadrant 1: Bottom Left
+        else if (quadrant == 1) {
+            draw_line(x0 - x, y0 + y, x0, y0 + y, color);
+            draw_line(x0 - y, y0 + x, x0, y0 + x, color);
+        }
+        // Quadrant 2: Top Left
+        else if (quadrant == 2) {
+            draw_line(x0 - x, y0 - y, x0, y0 - y, color);
+            draw_line(x0 - y, y0 - x, x0, y0 - x, color);
+        }
+        // Quadrant 3: Top Right
+        else if (quadrant == 3) {
+            draw_line(x0, y0 - y, x0 + x, y0 - y, color);
+            draw_line(x0, y0 - x, x0 + y, y0 - x, color);
+        }
+
+        if (err <= 0) {
+            y += 1;
+            err += 2 * y + 1;
+        }
+        if (err > 0) {
+            x -= 1;
+            err -= 2 * x + 1;
+        }
+    }
+}
+
+void draw_circle(int x0, int y0, int radius, uint32_t color, uint8_t fill) {
+    int x = radius;
+    int y = 0;
+    int err = 0;
+
+    while (x >= y) {
+        if (fill) {
+            draw_line(x0 - x, y0 + y, x0 + x, y0 + y, color);
+            draw_line(x0 - x, y0 - y, x0 + x, y0 - y, color);
+            draw_line(x0 - y, y0 + x, x0 + y, y0 + x, color);
+            draw_line(x0 - y, y0 - x, x0 + y, y0 - x, color);
+        } else {
+            put_pixel_alpha(x0 + x, y0 + y, color);
+            put_pixel_alpha(x0 + y, y0 + x, color);
+            put_pixel_alpha(x0 - y, y0 + x, color);
+            put_pixel_alpha(x0 - x, y0 + y, color);
+            put_pixel_alpha(x0 - x, y0 - y, color);
+            put_pixel_alpha(x0 - y, y0 - x, color);
+            put_pixel_alpha(x0 + y, y0 - x, color);
+            put_pixel_alpha(x0 + x, y0 - y, color);
+        }
+
+        if (err <= 0) {
+            y += 1;
+            err += 2 * y + 1;
+        }
+        if (err > 0) {
+            x -= 1;
+            err -= 2 * x + 1;
+        }
+    }
+}
+
+void draw_rounded_rect(int x, int y, int width, int height, int radius, uint32_t color) {
+    // Center rects
+    draw_rect_px(x + radius, y, width - 2 * radius, height, color);
+    draw_rect_px(x, y + radius, radius, height - 2 * radius, color);
+    draw_rect_px(x + width - radius, y + radius, radius, height - 2 * radius, color);
+
+    // Corners
+    draw_circle_quadrant_fill(x + width - radius - 1, y + height - radius - 1, radius, 0, color);
+    draw_circle_quadrant_fill(x + radius, y + height - radius - 1, radius, 1, color);
+    draw_circle_quadrant_fill(x + radius, y + radius, radius, 2, color);
+    draw_circle_quadrant_fill(x + width - radius - 1, y + radius, radius, 3, color);
+}
+
+void draw_string_px(const char* str, int x, int y, uint32_t color) {
+    int cur_x = x;
+    int cur_y = y;
+    while (*str) {
+        if (*str == '\n') {
+            cur_x = x;
+            cur_y += 16;
+        } else {
+            uint8_t *glyph = g_font + (unsigned char)*str * 16;
+            for (int row = 0; row < 16; row++) {
+                uint8_t data = glyph[row];
+                for (int col = 0; col < 8; col++) {
+                    if ((data >> (7 - col)) & 1) {
+                        put_pixel_alpha(cur_x + col, cur_y + row, color);
+                    }
+                }
+            }
+            cur_x += 8;
+        }
+        str++;
+    }
+}
