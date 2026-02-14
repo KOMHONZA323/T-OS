@@ -44,6 +44,7 @@ uint32_t vga_palette[16] = {
 /* Forward Declarations */
 void scroll_screen();
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
+void put_pixel_vga(int x, int y, uint8_t color_index);
 
 void init_screen() {
   g_width = screen_info->width;
@@ -54,28 +55,26 @@ void init_screen() {
   g_pitch = screen_info->pitch;
 
   if (g_bpp == 0) {
-      // Text Mode
-      g_back_buffer = g_framebuffer; // Direct write
-      g_logical_pitch = 160; // 80 cols * 2 bytes
+      // Text Mode (Fallback)
+      g_back_buffer = g_framebuffer;
+      g_logical_pitch = 160;
       MAX_COLS = 80;
       MAX_ROWS = 25;
-
-      // We can't use 16MB back buffer for text mode safely as expected
-      // just map it directly.
-  } else {
-      // Graphics Mode
-      // Use the hardware pitch provided by Stage 2
-
-      // Use direct rendering into VRAM to avoid corruption from assuming a fixed
-      // back-buffer address/size at high resolutions (e.g. 4K).
-      g_back_buffer = g_framebuffer;
+  } else if (g_bpp == 4) {
+      // VGA 640x480 Planar
+      g_width = 640;
+      g_height = 480;
+      g_pitch = 80; // 640 / 8
       g_logical_pitch = g_pitch;
-      // Logical Pitch (Back Buffer is always packed 32-bit pixels: width * 4)
+      g_framebuffer = (uint32_t*)0xA0000;
+      g_back_buffer = g_framebuffer; // Direct write for VGA
+      MAX_COLS = 80;
+      MAX_ROWS = 30; // 480 / 16
+  } else {
+      // VBE Graphics Mode
+      g_back_buffer = g_framebuffer;
       g_logical_pitch = g_width * 4;
-
-      // Allocate back buffer at 16MB mark
       g_back_buffer = (uint32_t *)0x1000000;
-
       MAX_COLS = g_width / 8;
       MAX_ROWS = g_height / 16;
   }
@@ -90,15 +89,25 @@ void init_screen() {
 void clear_screen() {
   if (g_bpp == 0) {
       // Text Mode Clear
-      // Fill with space (0x20) and attribute 0x07 (White on Black)
       char* vidmem = (char*)g_framebuffer;
       for (int i = 0; i < MAX_COLS * MAX_ROWS * 2; i+=2) {
           vidmem[i] = ' ';
           vidmem[i+1] = 0x07;
       }
+  } else if (g_bpp == 4) {
+      // VGA Clear (Planar - simplified: write 0 to all planes)
+      // Since it's planar, we can just write 0 to 0xA0000 region 4 times?
+      // Actually, if we write 0 to all addresses, it clears regardless of plane mask.
+
+      // Select all planes for writing (Map Mask Register)
+      port_byte_out(0x3C4, 0x02);
+      port_byte_out(0x3C5, 0x0F);
+
+      // Write 0s
+      memory_set((char*)0xA0000, 0, 80 * 480);
+
   } else {
-      // Fill with Black
-      // Use logical pitch for back buffer
+      // VBE Clear
       int size_bytes = g_height * g_logical_pitch;
       memory_set((char *)g_back_buffer, 0, size_bytes);
   }
@@ -107,11 +116,81 @@ void clear_screen() {
   cursor_y = 0;
 }
 
+// Convert ARGB to closest VGA index (0-15)
+uint8_t rgb_to_vga(uint32_t color) {
+    // Simple naive mapping based on components
+    // Or just check exact matches with palette
+    for (int i = 0; i < 16; i++) {
+        if (vga_palette[i] == color) return i;
+    }
+
+    // Check alpha
+    if (((color >> 24) & 0xFF) == 0) return 0; // Transparent -> Black?
+
+    // Threshold mapping
+    uint8_t r = (color >> 16) & 0xFF;
+    uint8_t g = (color >> 8) & 0xFF;
+    uint8_t b = color & 0xFF;
+
+    if (r > 128 && g > 128 && b > 128) return 15; // White
+    if (r > 128 && g > 128) return 14; // Yellow
+    if (r > 128 && b > 128) return 13; // Magenta
+    if (g > 128 && b > 128) return 11; // Cyan
+    if (r > 128) return 12; // Light Red
+    if (g > 128) return 10; // Light Green
+    if (b > 128) return 9; // Light Blue
+    if (r > 64 && g > 64 && b > 64) return 7; // Light Gray
+    return 8; // Dark Gray fallback
+}
+
+void put_pixel_vga(int x, int y, uint8_t color_index) {
+    unsigned int offset = (y * 80) + (x / 8);
+    uint8_t bit_mask = 0x80 >> (x % 8);
+
+    // Set Read Plane (Read Map Select)
+    // port_byte_out(0x3CE, 0x04);
+    // port_byte_out(0x3CF, plane); -- No, we write to planes.
+
+    // Standard VGA Write Mode 0 or 2 approach
+    // Write Mode 2 is good for individual pixels:
+    // 1. Graphics Mode Register (Index 5) -> Set Mode 2 (Write Mode 2)
+    // 2. Bit Mask Register (Index 8) -> Set which pixel in byte to modify
+    // 3. Read data to load latches
+    // 4. Write color to address (The CPU data value is the color in Mode 2)
+
+    // Graphics Controller Index 5: Mode Register
+    port_byte_out(0x3CE, 0x05);
+    port_byte_out(0x3CF, 0x02); // Write Mode 2
+
+    // Graphics Controller Index 8: Bit Mask
+    port_byte_out(0x3CE, 0x08);
+    port_byte_out(0x3CF, bit_mask);
+
+    // Read to load latches (Dummy read)
+    volatile uint8_t* vga_mem = (volatile uint8_t*)0xA0000;
+    uint8_t dummy = vga_mem[offset];
+    (void)dummy;
+
+    // Write color index
+    vga_mem[offset] = color_index;
+
+    // Restore default settings (Write Mode 0, Bit Mask 0xFF) - Optional optimization to skip if doing batch
+    // But for safety:
+    // port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
+    // port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
+}
+
 void put_pixel(int x, int y, uint32_t color) {
-  if (g_bpp == 0) return; // Not supported in text mode
+  if (g_bpp == 0) return;
 
   if (x < 0 || x >= g_width || y < 0 || y >= g_height)
     return;
+
+  if (g_bpp == 4) {
+      uint8_t idx = rgb_to_vga(color);
+      put_pixel_vga(x, y, idx);
+      return;
+  }
 
   // Draw to Back Buffer using LOGICAL pitch (Packed)
   uint8_t *pixel_addr =
@@ -127,42 +206,25 @@ void wait_vsync() {
 }
 
 void swap_buffers() {
-  // No-op when drawing directly into VRAM or Text Mode
   if (g_back_buffer == g_framebuffer)
     return;
 
   wait_vsync();
 
-  // Copy back buffer to front buffer row by row
   for (int y = 0; y < g_height; y++) {
-    // Source: Back buffer (Packed using g_logical_pitch)
     char *src = (char *)g_back_buffer + (y * g_logical_pitch);
-    // Dest: Front buffer (Hardware Pitch)
     char *dst = (char *)g_framebuffer + (y * g_pitch);
-
     memory_copy(src, dst, g_width * 4);
   }
 }
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg) {
   if (g_bpp == 0) {
-      // Text Mode: x is col * 8, y is row * 16. Convert back to col/row.
-      // This is a bit of a hack to support the unified API.
-      // Better: check if we are called from kprint and use cursor.
-      // But kprint passes explicit pixel coords to draw_char in VBE mode?
-      // No, kprint logic handles cursor. draw_char takes PIXEL coords.
-
-      // Let's assume standard grid alignment.
       int col = x / 8;
       int row = y / 16;
       if (col >= MAX_COLS || row >= MAX_ROWS) return;
-
       char* vidmem = (char*)g_framebuffer + (row * MAX_COLS + col) * 2;
       vidmem[0] = c;
-      // Convert ARGB to VGA attribute?
-      // Just hardcode 0x07 (White on Black) for now as fallback
-      // Or map fg color to VGA color index (0-15)
-      // For simplicity, let's use 0x0F (White on Black)
       vidmem[1] = 0x0F;
       return;
   }
@@ -206,7 +268,6 @@ void kprint_at_attr(char *message, int col, int row, char attr) {
         cursor_x--;
 
       if (g_bpp == 0) {
-          // Clear char in text mode
           char* vidmem = (char*)g_framebuffer + (cursor_y * MAX_COLS + cursor_x) * 2;
           vidmem[0] = ' ';
           vidmem[1] = attr;
@@ -257,17 +318,52 @@ void kprint_backspace() {
 
 void scroll_screen() {
   if (g_bpp == 0) {
-      // Text mode scrolling
-      // Copy lines 1-24 to 0-23
       char* vidmem = (char*)g_framebuffer;
       for (int i = 0; i < (MAX_ROWS - 1) * MAX_COLS * 2; i++) {
           vidmem[i] = vidmem[i + MAX_COLS * 2];
       }
-      // Clear last line
       for (int i = (MAX_ROWS - 1) * MAX_COLS * 2; i < MAX_ROWS * MAX_COLS * 2; i+=2) {
           vidmem[i] = ' ';
           vidmem[i+1] = 0x0F;
       }
+      return;
+  }
+
+  // VGA Scroll support?
+  // Simply redraws everything? Or memory move?
+  // Planar memory copy is hard.
+  // For now, let's ignore scrolling optimization in VGA mode or implement later.
+  // Just clear screen for now if scroll happens? No, that's bad.
+  // If we are in VGA mode, g_back_buffer == g_framebuffer.
+  // We can't use memory_copy on 0xA0000 easily because of planes.
+
+  if (g_bpp == 4) {
+      // Very slow scroll: Read pixels, write pixels shifted?
+      // Or just loop through planes?
+      // Enable all planes for read/write? No, can't read all planes at once.
+      // Copy plane by plane.
+
+      for (int plane = 0; plane < 4; plane++) {
+          // Read Map Select (Index 4)
+          port_byte_out(0x3CE, 0x04);
+          port_byte_out(0x3CF, plane);
+
+          // Map Mask (Index 2)
+          port_byte_out(0x3C4, 0x02);
+          port_byte_out(0x3C5, 1 << plane);
+
+          // Now standard memcpy works for this plane
+          char* vram = (char*)0xA0000;
+          int line_width = 80;
+          int total_bytes = 80 * 480;
+          int copy_bytes = 80 * (480 - 16);
+
+          memory_copy(vram + (16 * 80), vram, copy_bytes);
+          memory_set(vram + copy_bytes, 0, 16 * 80);
+      }
+
+      // Restore default
+      port_byte_out(0x3C4, 0x02); port_byte_out(0x3C5, 0x0F);
       return;
   }
 
@@ -287,16 +383,12 @@ void scroll_screen() {
 /* TUI Functions */
 
 void draw_rect(int col, int row, int width, int height, char attr) {
-  // If Text mode, implement
   if (g_bpp == 0) {
       for (int r=0; r<height; r++) {
           for (int c=0; c<width; c++) {
               int idx = ((row + r) * MAX_COLS + (col + c)) * 2;
               char* vidmem = (char*)g_framebuffer;
-              vidmem[idx+1] = attr; // Only change attr? Or draw space?
-              // Standard behavior often implies just filling background color,
-              // but TUI usually clears char to space too if filling a rect.
-              // Let's assume just updating background.
+              vidmem[idx+1] = attr;
           }
       }
       return;
@@ -366,10 +458,6 @@ void draw_box(int col, int row, int width, int height, char border_attr,
 
 void draw_box_rounded(int col, int row, int width, int height, char border_attr,
                       char inner_attr, char title_attr) {
-  // If Text Mode, rounded corners are same as normal box (or use +, etc)
-  // Let's just fallback to normal box logic for edges but use rounded corner chars if available.
-  // Extended ASCII: 218(DA), 191(BF), 192(C0), 217(D9) are single line corners.
-
   uint32_t b_fg = vga_palette[border_attr & 0x0F];
   uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
@@ -398,6 +486,15 @@ static inline int abs(int x) { return x < 0 ? -x : x; }
 
 void put_pixel_alpha(int x, int y, uint32_t color) {
     if (g_bpp == 0) return; // No alpha in text mode
+
+    // In VGA mode, we don't read back easily for alpha blending
+    // Fallback: just draw opaque pixel for now or use simplified logic
+    if (g_bpp == 4) {
+        if (((color >> 24) & 0xFF) > 128) { // 50% threshold
+            put_pixel(x, y, color);
+        }
+        return;
+    }
 
     if (x < 0 || x >= g_width || y < 0 || y >= g_height) return;
 
@@ -435,12 +532,26 @@ void draw_rect_px(int x, int y, int width, int height, uint32_t color) {
     if (y + height > g_height) height = g_height - y;
     if (width <= 0 || height <= 0) return;
 
+    // Optimization for VGA Mode filling rect?
+    // If solid color, we could use Write Mode 0/2 efficiently.
+    // For now, use put_pixel loop as it's safer.
+
     // Check for alpha in color
     uint8_t a = (color >> 24) & 0xFF;
     if (a < 255) {
         for (int r = 0; r < height; r++) {
             for (int c = 0; c < width; c++) {
                 put_pixel_alpha(x + c, y + r, color);
+            }
+        }
+        return;
+    }
+
+    if (g_bpp == 4) {
+        uint8_t idx = rgb_to_vga(color);
+        for (int r = 0; r < height; r++) {
+            for (int c = 0; c < width; c++) {
+                put_pixel_vga(x + c, y + r, idx);
             }
         }
         return;
@@ -480,25 +591,17 @@ static void draw_circle_quadrant_fill(int x0, int y0, int radius, int quadrant, 
     int y = 0;
     int err = 0;
 
-    // Fill logic: draw horizontal lines between circle edge and center axis
     while (x >= y) {
-        // Quadrant 0: Bottom Right
         if (quadrant == 0) {
             draw_line(x0, y0 + y, x0 + x, y0 + y, color);
             draw_line(x0, y0 + x, x0 + y, y0 + x, color);
-        }
-        // Quadrant 1: Bottom Left
-        else if (quadrant == 1) {
+        } else if (quadrant == 1) {
             draw_line(x0 - x, y0 + y, x0, y0 + y, color);
             draw_line(x0 - y, y0 + x, x0, y0 + x, color);
-        }
-        // Quadrant 2: Top Left
-        else if (quadrant == 2) {
+        } else if (quadrant == 2) {
             draw_line(x0 - x, y0 - y, x0, y0 - y, color);
             draw_line(x0 - y, y0 - x, x0, y0 - x, color);
-        }
-        // Quadrant 3: Top Right
-        else if (quadrant == 3) {
+        } else if (quadrant == 3) {
             draw_line(x0, y0 - y, x0 + x, y0 - y, color);
             draw_line(x0, y0 - x, x0 + y, y0 - x, color);
         }
@@ -566,8 +669,6 @@ void draw_rounded_rect(int x, int y, int width, int height, int radius, uint32_t
 
 void draw_string_px(const char* str, int x, int y, uint32_t color) {
     if (g_bpp == 0) {
-        // Fallback to kprint_at logic?
-        // draw_string_px is used for absolute positioning.
         int col = x / 8;
         int row = y / 16;
         kprint_at((char*)str, col, row);

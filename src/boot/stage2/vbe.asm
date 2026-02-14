@@ -2,6 +2,7 @@ set_vbe_mode:
     ; Check Selection
     mov al, [SELECTED_RES]
     cmp al, 9
+    je set_vga_mode
     je set_text_mode
 
     ; 1. Get VBE Info
@@ -57,6 +58,13 @@ target_4k:
     jmp find_specific_mode
 
 ; ---------------------------------------------------
+; VGA MODE (640x480 16-color, 4 planes)
+; ---------------------------------------------------
+set_vga_mode:
+    mov ax, 0x0012
+    int 0x10
+
+    ; Populate ScreenInfo at 0x5000 manually for VGA Mode
 ; TEXT MODE (VGA Mode 3)
 ; ---------------------------------------------------
 set_text_mode:
@@ -68,12 +76,12 @@ set_text_mode:
     mov es, ax
     mov di, 0x5000
 
-    mov word [es:di], 80       ; Width (Cols)
-    mov word [es:di+2], 25     ; Height (Rows)
-    mov byte [es:di+4], 0      ; BPP = 0 (Indicator for Text Mode)
-    mov word [es:di+5], 160    ; Pitch (80 * 2 bytes)
-    mov dword [es:di+7], 0xB8000 ; Framebuffer Address
-
+    mov word [es:di], 640      ; Width
+    mov word [es:di+2], 480    ; Height
+    mov byte [es:di+4], 4      ; BPP = 4 (Indicator for 4-bit Planar)
+    mov word [es:di+5], 80     ; Pitch (640 pixels / 8 bits per byte = 80 bytes)
+    mov dword [es:di+7], 0xA0000 ; Framebuffer Address (VGA window)
+    
     ret
 
 ; ---------------------------------------------------
