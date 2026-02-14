@@ -51,6 +51,8 @@ typedef struct {
 // Will be set in init_screen()
 extern int MAX_COLS;
 extern int MAX_ROWS;
+extern int g_width;
+extern int g_height;
 
 /* Public kernel API */
 void init_screen();
@@ -70,5 +72,13 @@ void draw_box_rounded(int col, int row, int width, int height, char border_attr,
 /* Low-level Graphics API */
 void put_pixel(int x, int y, uint32_t color);
 uint32_t vga_to_rgb(uint8_t attr);
+
+/* Advanced Graphics Primitives */
+void draw_rect_px(int x, int y, int width, int height, uint32_t color);
+void draw_rect_alpha(int x, int y, int width, int height, uint32_t color);
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color);
+void draw_circle(int x0, int y0, int radius, uint32_t color, uint8_t fill);
+void draw_rounded_rect(int x, int y, int width, int height, int radius, uint32_t color);
+void draw_string_px(const char* str, int x, int y, uint32_t color);
 
 #endif
