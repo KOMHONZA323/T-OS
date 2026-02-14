@@ -64,6 +64,13 @@ set_vga_mode:
     int 0x10
 
     ; Populate ScreenInfo at 0x5000 manually for VGA Mode
+; TEXT MODE (VGA Mode 3)
+; ---------------------------------------------------
+set_vga_mode:
+    mov ax, 0x0012
+    int 0x10
+
+    ; Populate ScreenInfo at 0x5000 manually for VGA Mode
     mov ax, 0
     mov es, ax
     mov di, 0x5000
@@ -74,6 +81,7 @@ set_vga_mode:
     mov word [es:di+5], 80     ; Pitch (640 pixels / 8 bits per byte = 80 bytes)
     mov dword [es:di+7], 0xA0000 ; Framebuffer Address (VGA window)
 
+    
     ret
 
 ; ---------------------------------------------------
