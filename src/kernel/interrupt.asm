@@ -95,7 +95,7 @@ irq_common_stub:
 
     push esp       ; Push pointer to registers_t
     call irq_handler
-    add esp, 4     ; Clean up pushed pointer
+    mov esp, eax   ; Switch to the returned stack pointer
 
     pop eax
     mov ds, ax

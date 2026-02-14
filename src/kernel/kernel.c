@@ -7,6 +7,13 @@
 #include "timer.h"
 #include "idt.h"
 
+#include "memory/pmm.h"
+#include "memory/vmm.h"
+#include "memory/heap.h"
+#include "../drivers/mouse.h"
+#include "task/scheduler.h"
+#include "tester.h"
+
 /* Forward Declarations */
 void draw_interface();
 void draw_wallpaper();
@@ -29,16 +36,29 @@ void kernel_main(void) {
     // 1. Initialize Screen (VBE)
     init_screen();
 
-    // 2. Initialize Interrupts & Timer
+    // 2. Memory Management
+    init_pmm();
+    init_vmm();
+    init_heap();
+
+    // 3. Initialize Interrupts & Timer
     init_idt();
     init_timer(1000); // 1000 Hz = 1ms per tick
+
+    // 4. Input & Multitasking
+    init_mouse();
+    init_scheduler();
+
     __asm__ volatile("sti");
 
-    // 3. Loading Screen
+    // 5. Loading Screen
     draw_loading_screen();
     clear_screen();
 
-    // 4. Main Loop
+    // 6. System Checks
+    run_system_checks();
+
+    // 7. Main Loop
     while (1) {
         uint32_t start_tick = get_tick_count();
 
@@ -92,6 +112,13 @@ void kernel_main(void) {
         if (show_fps_settings) {
             open_fps_settings();
         }
+
+        // Draw Mouse Cursor
+        int mx = get_mouse_x();
+        int my = get_mouse_y();
+        // Simple pointer
+        draw_rect_px(mx, my, 10, 10, COLOR_WHITE);
+        draw_rect_px(mx+2, my+2, 6, 6, COLOR_BLACK);
 
         // Swap Buffers (VSync)
         swap_buffers();

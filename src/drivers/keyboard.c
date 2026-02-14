@@ -1,5 +1,6 @@
 #include "keyboard.h"
 #include "ports.h"
+#include "../kernel/isr.h"
 
 // Scancode Set 1 (US QWERTY)
 char scancode_map[128] = {
@@ -11,26 +12,36 @@ char scancode_map[128] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-char get_char() {
-    // Check Status Register (0x64)
-    // Bit 0: Output Buffer Full (1 = Data available)
-    if (port_byte_in(0x64) & 0x01) {
-        // Read Scancode
-        unsigned char scancode = port_byte_in(0x60);
+// Circular Buffer
+#define KBD_BUFFER_SIZE 256
+volatile char kbd_buffer[KBD_BUFFER_SIZE];
+volatile uint8_t kbd_head = 0;
+volatile uint8_t kbd_tail = 0;
 
-        // Ignore Break Codes (0x80 bit set)
-        if (scancode & 0x80) {
-            return 0;
-        }
+void keyboard_handler(registers_t *regs) {
+    uint8_t scancode = port_byte_in(0x60);
 
-        // Extended codes (0xE0) - simplify and ignore for now
-        if (scancode == 0xE0) {
-            return 0;
-        }
-
+    if (scancode & 0x80) {
+        // Break code (Key Up)
+    } else {
+        // Make code (Key Down)
         if (scancode < 128) {
-            return scancode_map[scancode];
+            char c = scancode_map[scancode];
+            if (c) {
+                uint8_t next_head = (kbd_head + 1) % KBD_BUFFER_SIZE;
+                if (next_head != kbd_tail) {
+                    kbd_buffer[kbd_head] = c;
+                    kbd_head = next_head;
+                }
+            }
         }
     }
-    return 0;
+}
+
+char get_char() {
+    if (kbd_head == kbd_tail) return 0;
+
+    char c = kbd_buffer[kbd_tail];
+    kbd_tail = (kbd_tail + 1) % KBD_BUFFER_SIZE;
+    return c;
 }

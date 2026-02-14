@@ -80,10 +80,10 @@ add_custom_command(OUTPUT ${KERNEL_BIN}
 
 # 6. Create OS Image
 add_custom_target(t_os ALL
-    # 1. Combine Boot + Stage 2 (padded to 4096 bytes / 8 sectors)
-    # Total size: 512 + 4096 = 4608 bytes
+    # 1. Combine Boot + Stage 2 (padded to 8192 bytes / 16 sectors)
+    # Total size: 512 + 8192 = 8704 bytes
     COMMAND cat ${BOOT_BIN} ${STAGE2_BIN} > ${BUILD_DIR}/boot_combined.bin
-    COMMAND truncate -s 4608 ${BUILD_DIR}/boot_combined.bin
+    COMMAND truncate -s 8704 ${BUILD_DIR}/boot_combined.bin
 
     # 2. Append Kernel
     COMMAND cat ${BUILD_DIR}/boot_combined.bin ${KERNEL_BIN} > ${OS_IMAGE}

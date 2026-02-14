@@ -67,22 +67,27 @@ mov [SELECTED_RES], al
 
 save_and_continue:
 ; ------------------------------------------------------------------
-; 3. Set VBE Mode
+; 3. Detect Memory Map
+; ------------------------------------------------------------------
+call detect_memory_map
+
+; ------------------------------------------------------------------
+; 4. Set VBE Mode
 ; ------------------------------------------------------------------
 call set_vbe_mode
 
 ; ------------------------------------------------------------------
-; 4. Load Kernel
+; 5. Load Kernel
 ; ------------------------------------------------------------------
 ; Kernel starts at Sector 10 (LBA 9).
 ; Load to 0x10000 (ES=0x1000, BX=0x0000)
-; We load 60 sectors (30KB) just to be safe.
+; We load 128 sectors (64KB) just to be safe.
 mov ax, 0x1000
 mov es, ax
 mov bx, 0x0000
 
-mov cx, 60        ; Sectors to load
-mov ax, 9         ; Start LBA (Sector 10 = LBA 9)
+mov cx, 128       ; Sectors to load
+mov ax, 17        ; Start LBA. Boot=1, Stage2=16 -> Kernel starts at LBA 17.
 
 load_loop:
     push ax
@@ -124,6 +129,7 @@ jmp $ ; Should not reach here
 %include "src/boot/stage2/disk.asm"
 %include "src/boot/stage2/menu.asm"
 %include "src/boot/stage2/vbe.asm"
+%include "src/boot/stage2/memory_map.asm"
 
 vbe_error:
     mov si, MSG_VBE_ERR
