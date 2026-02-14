@@ -44,7 +44,6 @@ uint32_t vga_palette[16] = {
 /* Forward Declarations */
 void scroll_screen();
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg);
-void put_pixel_vga(int x, int y, uint8_t color_index);
 
 void init_screen() {
   g_width = screen_info->width;
@@ -64,10 +63,13 @@ void init_screen() {
       // VGA 640x480 Planar
       g_width = 640;
       g_height = 480;
-      g_pitch = 80; // 640 / 8
-      g_logical_pitch = g_pitch;
+      // Use RAM back buffer for double buffering
+      // We will store it as 1 byte per pixel (Linear 8-bit) in RAM
+      g_logical_pitch = 640;
+      g_back_buffer = (uint32_t *)0x1000000; // Reuse the 16MB buffer location
+      // g_framebuffer remains 0xA0000 (VRAM)
       g_framebuffer = (uint32_t*)0xA0000;
-      g_back_buffer = g_framebuffer; // Direct write for VGA
+
       MAX_COLS = 80;
       MAX_ROWS = 30; // 480 / 16
   } else {
@@ -95,24 +97,9 @@ void clear_screen() {
           vidmem[i+1] = 0x07;
       }
   } else if (g_bpp == 4) {
-      // VGA Clear (Planar)
-      // Ensure Write Mode 0 or 2. We use Map Mask to write all planes.
-
-      // Select all planes for writing (Map Mask Register)
-      port_byte_out(0x3C4, 0x02);
-      port_byte_out(0x3C5, 0x0F);
-
-      // Ensure Write Mode 0 (Default)
-      port_byte_out(0x3CE, 0x05);
-      port_byte_out(0x3CF, 0x00);
-
-      // Ensure Bit Mask is 0xFF
-      port_byte_out(0x3CE, 0x08);
-      port_byte_out(0x3CF, 0xFF);
-
-      // Write 0s
-      memory_set((char*)0xA0000, 0, 80 * 480);
-
+      // VGA Double Buffered Clear
+      // Just clear the RAM buffer
+      memory_set((char*)g_back_buffer, 0, 640 * 480);
   } else {
       // VBE Clear
       int size_bytes = g_height * g_logical_pitch;
@@ -126,31 +113,25 @@ void clear_screen() {
 // Convert ARGB to closest VGA index (0-15)
 uint8_t rgb_to_vga(uint32_t color) {
     // 1. Explicit Matches for T-OS Theme
-    // Theme colors are defined in theme.h, hardcoded here for driver independence
-    // COLOR_OBSIDIAN = 0xFF121212
     if ((color & 0xFFFFFF) == 0x121212) return 0; // Black
-    // COLOR_CHARCOAL = 0xFF1E1E1E
     if ((color & 0xFFFFFF) == 0x1E1E1E) return 8; // Dark Gray
-    // COLOR_NEON_BLUE = 0xFF00E5FF
     if ((color & 0xFFFFFF) == 0x00E5FF) return 11; // Cyan
 
-    // 2. Check exact matches with palette first
+    // 2. Check exact matches
     for (int i = 0; i < 16; i++) {
         if (vga_palette[i] == color) return i;
     }
 
     // Check alpha
-    if (((color >> 24) & 0xFF) == 0) return 0; // Transparent -> Black
+    if (((color >> 24) & 0xFF) == 0) return 0;
 
     uint8_t r = (color >> 16) & 0xFF;
     uint8_t g = (color >> 8) & 0xFF;
     uint8_t b = color & 0xFF;
 
     // 3. Threshold Mapping
-    // Ensure very dark colors map to Black (0)
     if (r < 32 && g < 32 && b < 32) return 0;
 
-    // Standard high-intensity colors
     if (r > 128 && g > 128 && b > 128) return 15; // White
     if (r > 128 && g > 128) return 14; // Yellow
     if (r > 128 && b > 128) return 13; // Magenta
@@ -161,38 +142,7 @@ uint8_t rgb_to_vga(uint32_t color) {
 
     // Mid-tones
     if (r > 64 && g > 64 && b > 64) return 7; // Light Gray
-
-    // Fallback
     return 8; // Dark Gray
-}
-
-void put_pixel_vga(int x, int y, uint8_t color_index) {
-    unsigned int offset = (y * 80) + (x / 8);
-    uint8_t bit_mask = 0x80 >> (x % 8);
-
-    // Graphics Controller Index 5: Mode Register
-    port_byte_out(0x3CE, 0x05);
-    port_byte_out(0x3CF, 0x02); // Write Mode 2
-
-    // Graphics Controller Index 8: Bit Mask
-    port_byte_out(0x3CE, 0x08);
-    port_byte_out(0x3CF, bit_mask);
-
-    // Read to load latches (Dummy read)
-    volatile uint8_t* vga_mem = (volatile uint8_t*)0xA0000;
-    uint8_t dummy = vga_mem[offset];
-    (void)dummy;
-
-    // Write color index
-    vga_mem[offset] = color_index;
-
-    // RESTORE DEFAULT STATE (Important for memset/memcpy)
-    // Write Mode 0
-    port_byte_out(0x3CE, 0x05);
-    port_byte_out(0x3CF, 0x00);
-    // Bit Mask 0xFF
-    port_byte_out(0x3CE, 0x08);
-    port_byte_out(0x3CF, 0xFF);
 }
 
 void put_pixel(int x, int y, uint32_t color) {
@@ -202,8 +152,10 @@ void put_pixel(int x, int y, uint32_t color) {
     return;
 
   if (g_bpp == 4) {
+      // VGA: Write index to RAM back buffer (1 byte per pixel)
       uint8_t idx = rgb_to_vga(color);
-      put_pixel_vga(x, y, idx);
+      uint8_t* buf = (uint8_t*)g_back_buffer;
+      buf[y * 640 + x] = idx;
       return;
   }
 
@@ -221,11 +173,64 @@ void wait_vsync() {
 }
 
 void swap_buffers() {
-  if (g_back_buffer == g_framebuffer)
-    return;
+  // If text mode, nothing to swap
+  if (g_bpp == 0) return;
+
+  // If VBE single buffering (direct), nothing to swap
+  if (g_back_buffer == g_framebuffer && g_bpp != 4) return;
 
   wait_vsync();
 
+  if (g_bpp == 4) {
+      // VGA Chunky-to-Planar Conversion
+      // g_back_buffer holds 640x480 bytes (indices 0-15)
+      // g_framebuffer is 0xA0000 (VRAM)
+      // We must write 4 planes.
+
+      // Ensure Write Mode 0, Bit Mask 0xFF
+      port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
+      port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
+
+      uint8_t* ram_buf = (uint8_t*)g_back_buffer;
+      volatile uint8_t* vram = (volatile uint8_t*)0xA0000;
+
+      // For each plane
+      for (int plane = 0; plane < 4; plane++) {
+          // Select Plane via Map Mask (Sequencer Index 2) -> wait, Map Mask is 0x3C4 index 2.
+          port_byte_out(0x3C4, 0x02);
+          port_byte_out(0x3C5, 1 << plane);
+
+          // Loop through all bytes in the plane (38400 bytes)
+          for (int i = 0; i < 38400; i++) {
+              uint8_t planar_byte = 0;
+              // Construct 1 byte from 8 chunky pixels
+              int pixel_base = i * 8;
+
+              // Unroll loop for speed
+              // Bit 7 (Pixel 0)
+              if (ram_buf[pixel_base + 0] & (1 << plane)) planar_byte |= 0x80;
+              // Bit 6 (Pixel 1)
+              if (ram_buf[pixel_base + 1] & (1 << plane)) planar_byte |= 0x40;
+              // Bit 5 (Pixel 2)
+              if (ram_buf[pixel_base + 2] & (1 << plane)) planar_byte |= 0x20;
+              // Bit 4 (Pixel 3)
+              if (ram_buf[pixel_base + 3] & (1 << plane)) planar_byte |= 0x10;
+              // Bit 3 (Pixel 4)
+              if (ram_buf[pixel_base + 4] & (1 << plane)) planar_byte |= 0x08;
+              // Bit 2 (Pixel 5)
+              if (ram_buf[pixel_base + 5] & (1 << plane)) planar_byte |= 0x04;
+              // Bit 1 (Pixel 6)
+              if (ram_buf[pixel_base + 6] & (1 << plane)) planar_byte |= 0x02;
+              // Bit 0 (Pixel 7)
+              if (ram_buf[pixel_base + 7] & (1 << plane)) planar_byte |= 0x01;
+
+              vram[i] = planar_byte;
+          }
+      }
+      return;
+  }
+
+  // VBE Swap
   for (int y = 0; y < g_height; y++) {
     char *src = (char *)g_back_buffer + (y * g_logical_pitch);
     char *dst = (char *)g_framebuffer + (y * g_pitch);
@@ -341,32 +346,14 @@ void scroll_screen() {
   }
 
   if (g_bpp == 4) {
-      // Planar scroll (slow but correct)
-      // Ensure Write Mode 0 and Bit Mask 0xFF
-      port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
-      port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
+      // VGA Back Buffer Scroll (Easy now!)
+      // Just copy RAM buffer
+      uint8_t* buf = (uint8_t*)g_back_buffer;
+      int line_width = 640;
+      int copy_bytes = line_width * (480 - 16);
 
-      for (int plane = 0; plane < 4; plane++) {
-          // Read Map Select (Index 4)
-          port_byte_out(0x3CE, 0x04);
-          port_byte_out(0x3CF, plane);
-
-          // Map Mask (Index 2)
-          port_byte_out(0x3C4, 0x02);
-          port_byte_out(0x3C5, 1 << plane);
-
-          // Now standard memcpy works for this plane
-          char* vram = (char*)0xA0000;
-          // int line_width = 80;
-          // int total_bytes = 80 * 480;
-          int copy_bytes = 80 * (480 - 16);
-
-          memory_copy(vram + (16 * 80), vram, copy_bytes);
-          memory_set(vram + copy_bytes, 0, 16 * 80);
-      }
-
-      // Restore default Map Mask
-      port_byte_out(0x3C4, 0x02); port_byte_out(0x3C5, 0x0F);
+      memory_copy((char*)(buf + 16 * 640), (char*)buf, copy_bytes);
+      memory_set((char*)(buf + copy_bytes), 0, 16 * 640);
       return;
   }
 
@@ -530,10 +517,6 @@ void draw_rect_px(int x, int y, int width, int height, uint32_t color) {
     if (y + height > g_height) height = g_height - y;
     if (width <= 0 || height <= 0) return;
 
-    // Optimization for VGA Mode filling rect?
-    // If solid color, we could use Write Mode 0/2 efficiently.
-    // For now, use put_pixel loop as it's safer.
-
     // Check for alpha in color
     uint8_t a = (color >> 24) & 0xFF;
     if (a < 255) {
@@ -547,10 +530,10 @@ void draw_rect_px(int x, int y, int width, int height, uint32_t color) {
 
     if (g_bpp == 4) {
         uint8_t idx = rgb_to_vga(color);
+        // Optimized fill for RAM buffer
+        uint8_t* buf = (uint8_t*)g_back_buffer;
         for (int r = 0; r < height; r++) {
-            for (int c = 0; c < width; c++) {
-                put_pixel_vga(x + c, y + r, idx);
-            }
+            memory_set((char*)(buf + (y + r) * 640 + x), idx, width);
         }
         return;
     }
