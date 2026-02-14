@@ -18,6 +18,8 @@ wait_key:
     je sel_1920p
     cmp al, '5'
     je sel_4k
+    cmp al, '9'
+    je sel_text
     jmp wait_key
 
 sel_auto:
@@ -37,6 +39,10 @@ sel_1920p:
     jmp menu_done
 sel_4k:
     mov byte [SELECTED_RES], 5
+    jmp menu_done
+sel_text:
+    mov byte [SELECTED_RES], 9
+    jmp menu_done
 
 menu_done:
     ; Update Config Buffer

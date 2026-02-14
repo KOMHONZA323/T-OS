@@ -1,4 +1,9 @@
 set_vbe_mode:
+    ; Check Selection
+    mov al, [SELECTED_RES]
+    cmp al, 9
+    je set_text_mode
+
     ; 1. Get VBE Info
     mov ax, 0
     mov es, ax
@@ -50,6 +55,26 @@ target_4k:
     mov cx, 3840
     mov dx, 2160
     jmp find_specific_mode
+
+; ---------------------------------------------------
+; TEXT MODE (VGA Mode 3)
+; ---------------------------------------------------
+set_text_mode:
+    mov ax, 0x0003
+    int 0x10
+
+    ; Populate ScreenInfo at 0x5000 manually for Text Mode
+    mov ax, 0
+    mov es, ax
+    mov di, 0x5000
+
+    mov word [es:di], 80       ; Width (Cols)
+    mov word [es:di+2], 25     ; Height (Rows)
+    mov byte [es:di+4], 0      ; BPP = 0 (Indicator for Text Mode)
+    mov word [es:di+5], 160    ; Pitch (80 * 2 bytes)
+    mov dword [es:di+7], 0xB8000 ; Framebuffer Address
+
+    ret
 
 ; ---------------------------------------------------
 ; AUTO DETECT MODE (Highest Res 32bpp)
