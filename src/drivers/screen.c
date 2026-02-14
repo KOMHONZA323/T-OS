@@ -249,6 +249,10 @@ void kprint_at_attr(char *message, int col, int row, char attr) {
   if (row >= 0)
     cursor_y = row;
 
+  // If Text Mode, attr is the VGA attribute byte directly
+  // If VBE, attr is index into palette.
+  // Coincidentally, they map somewhat similarly if using standard VGA palette.
+
   uint32_t fg = vga_palette[attr & 0x0F];
   uint32_t bg = vga_palette[(attr >> 4) & 0x0F];
 
@@ -428,10 +432,15 @@ void draw_fill(int col, int row, int width, int height, char c, char attr) {
 
 void draw_box(int col, int row, int width, int height, char border_attr,
               char inner_attr) {
+  // Common TUI logic
   uint32_t b_fg = vga_palette[border_attr & 0x0F];
   uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
   draw_fill(col + 1, row + 1, width - 2, height - 2, ' ', inner_attr);
+
+  // Need custom handling for text mode vs graphics mode for draw_char calls?
+  // draw_char handles the abstraction via (col*8, row*16).
+  // So as long as we pass coordinates, it should work for both if draw_char handles bpp=0.
 
   for (int x = 0; x < width; x++) {
     draw_char(205, (col + x) * 8, row * 16, b_fg, b_bg);
