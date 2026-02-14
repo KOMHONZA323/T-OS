@@ -139,6 +139,8 @@ uint8_t rgb_to_vga(uint32_t color) {
     if (r > 128) return 12; // Light Red
     if (g > 128) return 10; // Light Green
     if (b > 128) return 9; // Light Blue
+
+    // Mid-tones
     if (r > 64 && g > 64 && b > 64) return 7; // Light Gray
     return 8; // Dark Gray
 }
