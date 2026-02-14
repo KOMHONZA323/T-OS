@@ -125,22 +125,32 @@ void clear_screen() {
 
 // Convert ARGB to closest VGA index (0-15)
 uint8_t rgb_to_vga(uint32_t color) {
-    // Check exact matches with palette first
-    // Simple naive mapping based on components
-    // Or just check exact matches with palette
+    // 1. Explicit Matches for T-OS Theme
+    // Theme colors are defined in theme.h, hardcoded here for driver independence
+    // COLOR_OBSIDIAN = 0xFF121212
+    if ((color & 0xFFFFFF) == 0x121212) return 0; // Black
+    // COLOR_CHARCOAL = 0xFF1E1E1E
+    if ((color & 0xFFFFFF) == 0x1E1E1E) return 8; // Dark Gray
+    // COLOR_NEON_BLUE = 0xFF00E5FF
+    if ((color & 0xFFFFFF) == 0x00E5FF) return 11; // Cyan
+
+    // 2. Check exact matches with palette first
     for (int i = 0; i < 16; i++) {
         if (vga_palette[i] == color) return i;
     }
 
     // Check alpha
-    if (((color >> 24) & 0xFF) == 0) return 0; // Transparent -> Black?
+    if (((color >> 24) & 0xFF) == 0) return 0; // Transparent -> Black
 
-    // Threshold mapping
     uint8_t r = (color >> 16) & 0xFF;
     uint8_t g = (color >> 8) & 0xFF;
     uint8_t b = color & 0xFF;
 
-    // Simple brightness/threshold logic
+    // 3. Threshold Mapping
+    // Ensure very dark colors map to Black (0)
+    if (r < 32 && g < 32 && b < 32) return 0;
+
+    // Standard high-intensity colors
     if (r > 128 && g > 128 && b > 128) return 15; // White
     if (r > 128 && g > 128) return 14; // Yellow
     if (r > 128 && b > 128) return 13; // Magenta
@@ -148,8 +158,12 @@ uint8_t rgb_to_vga(uint32_t color) {
     if (r > 128) return 12; // Light Red
     if (g > 128) return 10; // Light Green
     if (b > 128) return 9; // Light Blue
+
+    // Mid-tones
     if (r > 64 && g > 64 && b > 64) return 7; // Light Gray
-    return 8; // Dark Gray fallback
+
+    // Fallback
+    return 8; // Dark Gray
 }
 
 void put_pixel_vga(int x, int y, uint8_t color_index) {
@@ -326,19 +340,11 @@ void scroll_screen() {
       return;
   }
 
-  // VGA Scroll support?
-  // Simply redraws everything? Or memory move?
-  // Planar memory copy is hard.
-  // For now, let's ignore scrolling optimization in VGA mode or implement later.
-  // Just clear screen for now if scroll happens? No, that's bad.
-  // If we are in VGA mode, g_back_buffer == g_framebuffer.
-  // We can't use memory_copy on 0xA0000 easily because of planes.
-
   if (g_bpp == 4) {
-      // Very slow scroll: Read pixels, write pixels shifted?
-      // Or just loop through planes?
-      // Enable all planes for read/write? No, can't read all planes at once.
-      // Copy plane by plane.
+      // Planar scroll (slow but correct)
+      // Ensure Write Mode 0 and Bit Mask 0xFF
+      port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
+      port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
 
       for (int plane = 0; plane < 4; plane++) {
           // Read Map Select (Index 4)
