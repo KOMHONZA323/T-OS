@@ -115,14 +115,25 @@ void draw_interface() {
     draw_wallpaper();
 
     // 2. Windows
+    // Use relative coordinates for windows using integer arithmetic
 
-    // Window 1: C Code Editor
-    draw_window_modern(50, 50, 400, 300, "main.c - Visual Studio Code");
-    draw_c_code_content(50 + 15, 50 + 40);
+    // Window 1: C Code Editor (Left side)
+    int w1_x = (g_width * 5) / 100; // 5% from left
+    int w1_y = (g_height * 10) / 100; // 10% from top
+    int w1_w = (g_width * 40) / 100;  // 40% width
+    int w1_h = (g_height * 50) / 100; // 50% height
 
-    // Window 2: Terminal
-    draw_window_modern(300, 200, 450, 250, "Terminal");
-    draw_terminal_content(300 + 15, 200 + 40);
+    draw_window_modern(w1_x, w1_y, w1_w, w1_h, "main.c - Visual Studio Code");
+    draw_c_code_content(w1_x + 10, w1_y + 30);
+
+    // Window 2: Terminal (Right side overlapping)
+    int w2_x = (g_width * 35) / 100; // Overlap
+    int w2_y = (g_height * 30) / 100; // Lower
+    int w2_w = (g_width * 45) / 100;
+    int w2_h = (g_height * 40) / 100;
+
+    draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
+    draw_terminal_content(w2_x + 10, w2_y + 30);
 
     // 3. Bars
     draw_top_bar();
@@ -140,53 +151,59 @@ void draw_wallpaper() {
 
     // Abstract shapes
     // Faint blue box
-    draw_rect_alpha(100, 100, 200, 200, 0x1000E5FF);
+    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x1000E5FF);
     // Faint circle
-    draw_circle(g_width/2, g_height/2, 300, 0x101E1E1E, 0);
+    draw_circle(g_width/2, g_height/2, g_height/3, 0x101E1E1E, 0);
 }
 
 void draw_top_bar() {
-    int height = 30;
+    int height = (g_height < 600) ? 20 : 30; // Smaller bar on VGA
     // Translucent black top bar
     draw_rect_alpha(0, 0, g_width, height, COLOR_TOP_BAR_BG);
 
+    int text_y = (height - 16) / 2;
+    if (text_y < 0) text_y = 0;
+
     // "Activities" button
-    draw_string_px("Activities", 10, 8, COLOR_TOP_BAR_TEXT);
+    draw_string_px("Activities", 10, text_y, COLOR_TOP_BAR_TEXT);
 
     // Centered Clock
     char* time = "Oct 25 12:45 PM";
     int time_width = strlen(time) * 8;
-    draw_string_px(time, (g_width - time_width)/2, 8, COLOR_TOP_BAR_TEXT);
+    draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
     // System Tray (Wi-Fi, Battery, Power)
-    char* tray = "WF  BT  PWR";
+    char* tray = "WF BT PWR";
     int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 20, 8, COLOR_TOP_BAR_TEXT);
+    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
 }
 
 void draw_bottom_bar() {
-    int height = 40;
+    int height = (g_height < 600) ? 30 : 40;
     int y = g_height - height;
+
     // Semi-transparent frosted glass taskbar
     draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
 
     // Start Button "T"
-    draw_rect_px(10, y + 5, 30, 30, COLOR_NEON_BLUE);
-    draw_string_px("T", 20, y + 12, COLOR_OBSIDIAN);
+    int start_size = height - 10;
+    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
+    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
 
     // Centered App Icons (Glowing blue-tinted)
     int center_x = g_width / 2;
-    int icon_spacing = 40;
+    int icon_size = height - 15; // slightly smaller than bar
+    int icon_spacing = icon_size + 10;
 
     // Icon 1 (Active)
-    draw_rect_px(center_x - icon_spacing, y + 10, 20, 20, 0xFF4080FF);
-    draw_rect_px(center_x - icon_spacing, y + 35, 20, 2, COLOR_NEON_BLUE); // Glow line
+    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    draw_rect_px(center_x - icon_spacing, y + height - 2, icon_size, 2, COLOR_NEON_BLUE); // Glow line
 
     // Icon 2
-    draw_rect_px(center_x, y + 10, 20, 20, 0xFF4080FF);
+    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
 
     // Icon 3
-    draw_rect_px(center_x + icon_spacing, y + 10, 20, 20, 0xFF4080FF);
+    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
 
     // Show Desktop Sliver
     draw_rect_px(g_width - 5, y, 5, height, 0x50FFFFFF);
@@ -194,23 +211,33 @@ void draw_bottom_bar() {
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
     // Drop shadow
-    draw_rect_alpha(x + 10, y + 10, w, h, 0x60000000);
+    draw_rect_alpha(x + 5, y + 5, w, h, 0x60000000);
 
     // Window Body
     draw_rounded_rect(x, y, w, h, 8, COLOR_CHARCOAL);
 
     // Title Bar Area (Implicit in body, just draw title)
-    draw_string_px(title, x + 15, y + 10, COLOR_WHITE);
+    // Clip title if window is too small?
+    // Just draw
+    draw_string_px(title, x + 10, y + 5, COLOR_WHITE);
 
     // Window Controls (Traffic lights)
-    draw_circle(x + w - 20, y + 15, 5, COLOR_RED, 1);
-    draw_circle(x + w - 40, y + 15, 5, COLOR_YELLOW, 1);
-    draw_circle(x + w - 60, y + 15, 5, COLOR_GREEN, 1);
+    int radius = 4;
+    int spacing = 12;
+    int controls_x = x + w - 15;
+    int controls_y = y + 10;
+
+    draw_circle(controls_x, controls_y, radius, COLOR_RED, 1);
+    draw_circle(controls_x - spacing, controls_y, radius, COLOR_YELLOW, 1);
+    draw_circle(controls_x - spacing*2, controls_y, radius, COLOR_GREEN, 1);
 }
 
 void draw_c_code_content(int x, int y) {
     int line_h = 16;
     int current_y = y;
+
+    // Only draw if we have space
+    if (current_y + 6*line_h > g_height) return;
 
     // Line 1: #include <stdio.h>
     draw_string_px("#include", x, current_y, COLOR_MAGENTA);
@@ -227,15 +254,15 @@ void draw_c_code_content(int x, int y) {
     current_y += line_h;
 
     // Line 4: printf("Hello T-OS!\n");
-    draw_string_px("    printf", x, current_y, COLOR_YELLOW);
-    draw_string_px("(", x + 85, current_y, COLOR_WHITE);
-    draw_string_px("\"Hello T-OS!\\n\"", x + 95, current_y, 0xFFCE9178);
-    draw_string_px(");", x + 230, current_y, COLOR_WHITE);
+    draw_string_px("  printf", x, current_y, COLOR_YELLOW);
+    draw_string_px("(", x + 70, current_y, COLOR_WHITE); // adjusted x
+    draw_string_px("\"Hello!\"", x + 80, current_y, 0xFFCE9178); // shorter string
+    draw_string_px(");", x + 150, current_y, COLOR_WHITE);
     current_y += line_h;
 
     // Line 5: return 0;
-    draw_string_px("    return", x, current_y, COLOR_MAGENTA);
-    draw_string_px("0;", x + 85, current_y, 0xFFB5CEA8); // Light Green number
+    draw_string_px("  return", x, current_y, COLOR_MAGENTA);
+    draw_string_px("0;", x + 70, current_y, 0xFFB5CEA8);
     current_y += line_h;
 
     // Line 6: }
@@ -249,19 +276,17 @@ void draw_terminal_content(int x, int y) {
     uint32_t prompt_col = COLOR_NEON_BLUE;
     uint32_t success_col = COLOR_GREEN;
 
-    draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_string_px(" nasm -f bin boot.asm -o boot.bin", x + 100, current_y, text_col);
-    current_y += line_h;
+    // Only draw if we have space
+    if (current_y + 4*line_h > g_height) return;
 
     draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_string_px(" gcc -c kernel.c -o kernel.o", x + 100, current_y, text_col);
+    draw_string_px(" make build", x + 100, current_y, text_col);
     current_y += line_h;
 
-    draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_string_px(" ld -o kernel.bin kernel.o", x + 100, current_y, text_col);
+    draw_string_px("[OK] Kernel.", x, current_y, success_col);
     current_y += line_h;
 
-    draw_string_px("[SUCCESS] Build complete.", x, current_y, success_col);
+    draw_string_px("[OK] Boot.", x, current_y, success_col);
     current_y += line_h;
 
     draw_string_px("user@t-os:~$", x, current_y, prompt_col);

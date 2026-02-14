@@ -95,13 +95,20 @@ void clear_screen() {
           vidmem[i+1] = 0x07;
       }
   } else if (g_bpp == 4) {
-      // VGA Clear (Planar - simplified: write 0 to all planes)
-      // Since it's planar, we can just write 0 to 0xA0000 region 4 times?
-      // Actually, if we write 0 to all addresses, it clears regardless of plane mask.
+      // VGA Clear (Planar)
+      // Ensure Write Mode 0 or 2. We use Map Mask to write all planes.
 
       // Select all planes for writing (Map Mask Register)
       port_byte_out(0x3C4, 0x02);
       port_byte_out(0x3C5, 0x0F);
+
+      // Ensure Write Mode 0 (Default)
+      port_byte_out(0x3CE, 0x05);
+      port_byte_out(0x3CF, 0x00);
+
+      // Ensure Bit Mask is 0xFF
+      port_byte_out(0x3CE, 0x08);
+      port_byte_out(0x3CF, 0xFF);
 
       // Write 0s
       memory_set((char*)0xA0000, 0, 80 * 480);
@@ -118,8 +125,7 @@ void clear_screen() {
 
 // Convert ARGB to closest VGA index (0-15)
 uint8_t rgb_to_vga(uint32_t color) {
-    // Simple naive mapping based on components
-    // Or just check exact matches with palette
+    // Check exact matches with palette first
     for (int i = 0; i < 16; i++) {
         if (vga_palette[i] == color) return i;
     }
@@ -132,6 +138,7 @@ uint8_t rgb_to_vga(uint32_t color) {
     uint8_t g = (color >> 8) & 0xFF;
     uint8_t b = color & 0xFF;
 
+    // Simple brightness/threshold logic
     if (r > 128 && g > 128 && b > 128) return 15; // White
     if (r > 128 && g > 128) return 14; // Yellow
     if (r > 128 && b > 128) return 13; // Magenta
@@ -146,17 +153,6 @@ uint8_t rgb_to_vga(uint32_t color) {
 void put_pixel_vga(int x, int y, uint8_t color_index) {
     unsigned int offset = (y * 80) + (x / 8);
     uint8_t bit_mask = 0x80 >> (x % 8);
-
-    // Set Read Plane (Read Map Select)
-    // port_byte_out(0x3CE, 0x04);
-    // port_byte_out(0x3CF, plane); -- No, we write to planes.
-
-    // Standard VGA Write Mode 0 or 2 approach
-    // Write Mode 2 is good for individual pixels:
-    // 1. Graphics Mode Register (Index 5) -> Set Mode 2 (Write Mode 2)
-    // 2. Bit Mask Register (Index 8) -> Set which pixel in byte to modify
-    // 3. Read data to load latches
-    // 4. Write color to address (The CPU data value is the color in Mode 2)
 
     // Graphics Controller Index 5: Mode Register
     port_byte_out(0x3CE, 0x05);
@@ -174,10 +170,13 @@ void put_pixel_vga(int x, int y, uint8_t color_index) {
     // Write color index
     vga_mem[offset] = color_index;
 
-    // Restore default settings (Write Mode 0, Bit Mask 0xFF) - Optional optimization to skip if doing batch
-    // But for safety:
-    // port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
-    // port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
+    // RESTORE DEFAULT STATE (Important for memset/memcpy)
+    // Write Mode 0
+    port_byte_out(0x3CE, 0x05);
+    port_byte_out(0x3CF, 0x00);
+    // Bit Mask 0xFF
+    port_byte_out(0x3CE, 0x08);
+    port_byte_out(0x3CF, 0xFF);
 }
 
 void put_pixel(int x, int y, uint32_t color) {
@@ -248,10 +247,6 @@ void kprint_at_attr(char *message, int col, int row, char attr) {
     cursor_x = col;
   if (row >= 0)
     cursor_y = row;
-
-  // If Text Mode, attr is the VGA attribute byte directly
-  // If VBE, attr is index into palette.
-  // Coincidentally, they map somewhat similarly if using standard VGA palette.
 
   uint32_t fg = vga_palette[attr & 0x0F];
   uint32_t bg = vga_palette[(attr >> 4) & 0x0F];
@@ -329,19 +324,11 @@ void scroll_screen() {
       return;
   }
 
-  // VGA Scroll support?
-  // Simply redraws everything? Or memory move?
-  // Planar memory copy is hard.
-  // For now, let's ignore scrolling optimization in VGA mode or implement later.
-  // Just clear screen for now if scroll happens? No, that's bad.
-  // If we are in VGA mode, g_back_buffer == g_framebuffer.
-  // We can't use memory_copy on 0xA0000 easily because of planes.
-
   if (g_bpp == 4) {
-      // Very slow scroll: Read pixels, write pixels shifted?
-      // Or just loop through planes?
-      // Enable all planes for read/write? No, can't read all planes at once.
-      // Copy plane by plane.
+      // Planar scroll (slow but correct)
+      // Ensure Write Mode 0 and Bit Mask 0xFF
+      port_byte_out(0x3CE, 0x05); port_byte_out(0x3CF, 0x00);
+      port_byte_out(0x3CE, 0x08); port_byte_out(0x3CF, 0xFF);
 
       for (int plane = 0; plane < 4; plane++) {
           // Read Map Select (Index 4)
@@ -354,15 +341,15 @@ void scroll_screen() {
 
           // Now standard memcpy works for this plane
           char* vram = (char*)0xA0000;
-          int line_width = 80;
-          int total_bytes = 80 * 480;
+          // int line_width = 80;
+          // int total_bytes = 80 * 480;
           int copy_bytes = 80 * (480 - 16);
 
           memory_copy(vram + (16 * 80), vram, copy_bytes);
           memory_set(vram + copy_bytes, 0, 16 * 80);
       }
 
-      // Restore default
+      // Restore default Map Mask
       port_byte_out(0x3C4, 0x02); port_byte_out(0x3C5, 0x0F);
       return;
   }
@@ -432,15 +419,10 @@ void draw_fill(int col, int row, int width, int height, char c, char attr) {
 
 void draw_box(int col, int row, int width, int height, char border_attr,
               char inner_attr) {
-  // Common TUI logic
   uint32_t b_fg = vga_palette[border_attr & 0x0F];
   uint32_t b_bg = vga_palette[(border_attr >> 4) & 0x0F];
 
   draw_fill(col + 1, row + 1, width - 2, height - 2, ' ', inner_attr);
-
-  // Need custom handling for text mode vs graphics mode for draw_char calls?
-  // draw_char handles the abstraction via (col*8, row*16).
-  // So as long as we pass coordinates, it should work for both if draw_char handles bpp=0.
 
   for (int x = 0; x < width; x++) {
     draw_char(205, (col + x) * 8, row * 16, b_fg, b_bg);
