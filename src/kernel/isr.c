@@ -2,6 +2,7 @@
 #include "isr.h"
 #include "../drivers/ports.h"
 #include "../drivers/utils.h"
+#include "../drivers/screen.h"
 
 // Defined in timer.c for now, or just extern
 extern registers_t* timer_callback(registers_t *regs);
@@ -10,9 +11,18 @@ extern void mouse_handler(registers_t *regs);
 extern uint32_t tick;
 
 void isr_handler(registers_t *regs) {
-    // Basic exception handler
-    // We can print something if we want
-    // kprint("Interrupt Received\n");
+    if (regs->int_no == 14) { // Page Fault
+        uint32_t cr2;
+        asm volatile("mov %%cr2, %0" : "=r"(cr2));
+        kprint("PAGE FAULT! Addr: ");
+        char buf[32];
+        int_to_ascii(cr2, buf); // Decimal only for now in utils? Or implement hex?
+        // We have int_to_ascii in utils.c which is decimal.
+        // It's better than nothing.
+        kprint(buf);
+        kprint("\n");
+        while(1);
+    }
 }
 
 registers_t* irq_handler(registers_t *regs) {

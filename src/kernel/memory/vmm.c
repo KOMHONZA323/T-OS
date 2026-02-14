@@ -1,6 +1,7 @@
 #include "vmm.h"
 #include "pmm.h"
 #include "../../drivers/utils.h"
+#include "../../drivers/screen.h" // For ScreenInfo definition
 
 // Page Directory (must be aligned to 4KB)
 uint32_t* page_directory = 0;
@@ -40,22 +41,24 @@ void init_vmm() {
     page_directory = (uint32_t*)pmm_alloc_page();
     memory_set((char*)page_directory, 0, 4096);
 
-    // 2. Identity Map 0-16MB (Kernel, VBE, Bitmap, etc)
-    // 16MB = 4 Page Tables (4 * 1024 * 4KB = 16MB)
-    // Actually, we can just identity map everything found by PMM
-    // But let's stick to 16MB for safety and speed.
-    // If PMM returns address > 16MB, we will map it dynamically later.
-    // However, if we allocate a page table at high memory, we need to map it first?
-    // Since we identity map low memory where PMM bitmap is (2MB), it's fine.
-    // The issue is if PMM returns a high address for a page table.
-    // PMM allocates sequentially from 0 up?
-    // pmm_alloc_page scans from 0 up. So it will return low memory first.
-    // This is safe.
-
-    // Map 0 - 16MB
-    // 16MB / 4KB = 4096 pages
+    // 2. Identity Map 0-16MB (Kernel, etc)
+    // 16MB = 4096 pages
     for (uint32_t i = 0; i < 4096; i++) {
         vmm_map_page((void*)(i * 4096), (void*)(i * 4096));
+    }
+
+    // 3. Map VBE Framebuffer
+    ScreenInfo* screen_info = (ScreenInfo*)0x5000;
+    if (screen_info->framebuffer != 0) {
+        uint32_t fb_addr = screen_info->framebuffer;
+        uint32_t fb_size = screen_info->width * screen_info->height * (screen_info->bpp / 8);
+        // Align size to page boundary (round up)
+        uint32_t pages = (fb_size + 4095) / 4096;
+
+        for (uint32_t i = 0; i < pages; i++) {
+            void* addr = (void*)(fb_addr + i * 4096);
+            vmm_map_page(addr, addr);
+        }
     }
 
     // 3. Enable Paging
