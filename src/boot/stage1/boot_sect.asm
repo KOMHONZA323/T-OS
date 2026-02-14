@@ -16,7 +16,7 @@ STAGE2_OFFSET equ 0x7E00
 
     ; Load Stage 2
     mov bx, STAGE2_OFFSET
-    mov dh, 8            ; Load 8 sectors (4KB) for Stage 2. Safer size.
+    mov dh, 16           ; Load 16 sectors (8KB) for Stage 2. Safer size.
     mov dl, [BOOT_DRIVE]
     call disk_load
 

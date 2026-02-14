@@ -4,7 +4,9 @@
 #include "../drivers/utils.h"
 
 // Defined in timer.c for now, or just extern
-extern void timer_callback(registers_t *regs);
+extern registers_t* timer_callback(registers_t *regs);
+extern void keyboard_handler(registers_t *regs); // Changed from keyboard_callback to keyboard_handler
+extern void mouse_handler(registers_t *regs);
 extern uint32_t tick;
 
 void isr_handler(registers_t *regs) {
@@ -13,20 +15,27 @@ void isr_handler(registers_t *regs) {
     // kprint("Interrupt Received\n");
 }
 
-void irq_handler(registers_t *regs) {
+registers_t* irq_handler(registers_t *regs) {
+    registers_t* ret = regs;
+
     // Handle IRQs
     // IRQ0 (32) is Timer
     if (regs->int_no == 32) {
-        timer_callback(regs);
+        ret = timer_callback(regs);
     }
     // IRQ1 (33) is Keyboard
-    // if (regs->int_no == 33) { keyboard_callback(regs); }
+    if (regs->int_no == 33) { keyboard_handler(regs); }
+
+    // IRQ12 (44) is Mouse
+    if (regs->int_no == 44) { mouse_handler(regs); }
 
     // Send EOI to PICs
     if (regs->int_no >= 40) {
         port_byte_out(0xA0, 0x20); // Slave
     }
     port_byte_out(0x20, 0x20); // Master
+
+    return ret;
 }
 
 void init_idt() {
@@ -41,12 +50,14 @@ void init_idt() {
     port_byte_out(0xA1, 0x02);
     port_byte_out(0x21, 0x01);
     port_byte_out(0xA1, 0x01);
-    // Unmask only Timer (IRQ0)
-    // Mask all other interrupts (e.g., Keyboard) to prevent interference
-    // 0xFE = 1111 1110 (Bit 0 cleared = IRQ0 enabled, others disabled)
-    port_byte_out(0x21, 0xFE);
-    // Mask all slave interrupts
-    port_byte_out(0xA1, 0xFF);
+    // Unmask Timer (IRQ0) and Keyboard (IRQ1) and Slave Cascade (IRQ2)
+    // 0xFA = 1111 1010 (Timer=0, Keyboard=1, Slave=2)
+    // 1111 1000 = F8
+    port_byte_out(0x21, 0xF8);
+
+    // Unmask Mouse (IRQ12 -> Slave 4)
+    // 1110 1111 = EF
+    port_byte_out(0xA1, 0xEF);
 
     // Set gates
     // Exceptions
