@@ -1,0 +1,27 @@
+#ifndef STD_GLH
+#define STD_GLH
+
+#define NULL ((void*)0)
+
+// Standard Types (assumed to be built-in by tgc)
+// int: 32-bit signed integer
+// char: 8-bit signed integer
+// void: empty type
+
+// Standard I/O
+void print(char* message);
+char get_char();
+
+// System
+void exit();
+void sleep(int ms);
+
+// Window Management
+// Returns window ID on success, -1 on failure
+int os_create_window(int width, int height, char* title);
+
+// Process Management
+// Returns process ID on success, -1 on failure
+int os_spawn_process(char* filename);
+
+#endif
