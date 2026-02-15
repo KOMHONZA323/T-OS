@@ -58,6 +58,11 @@ add_custom_command(OUTPUT ${INTERRUPT_OBJ}
 # 4. Compile Kernel Sources
 file(GLOB_RECURSE KERNEL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/*.c" "${CMAKE_SOURCE_DIR}/src/drivers/*.c")
 
+# Explicitly ensure syscalls are included
+file(GLOB SYSCALL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/syscalls/*.c")
+list(APPEND KERNEL_SOURCES ${SYSCALL_SOURCES})
+list(REMOVE_DUPLICATES KERNEL_SOURCES)
+
 set(KERNEL_OBJECTS "")
 foreach(SOURCE_FILE ${KERNEL_SOURCES})
     get_filename_component(FILE_NAME ${SOURCE_FILE} NAME_WE)

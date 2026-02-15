@@ -24,8 +24,6 @@ int os_create_window(int width, int height, char* title);
 // Returns process ID on success, -1 on failure
 int os_spawn_process(char* filename);
 
-#endif
-
 // Memory Management
 void* malloc(int size);
 void free(void* ptr);
@@ -43,3 +41,5 @@ int close(int fd);
 #define O_WRONLY 1
 #define O_RDWR   2
 #define O_CREAT  4
+
+#endif
