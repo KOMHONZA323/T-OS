@@ -179,7 +179,7 @@ void swap_buffers() {
   // If VBE single buffering (direct), nothing to swap
   if (g_back_buffer == g_framebuffer && g_bpp != 4) return;
 
-  wait_vsync();
+  // wait_vsync(); // Removed to fix QEMU lag. rely on PIT limiter.
 
   if (g_bpp == 4) {
       // VGA Chunky-to-Planar Conversion
