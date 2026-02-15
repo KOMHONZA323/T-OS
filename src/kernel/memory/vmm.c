@@ -41,9 +41,9 @@ void init_vmm() {
     page_directory = (uint32_t*)pmm_alloc_page();
     memory_set((char*)page_directory, 0, 4096);
 
-    // 2. Identity Map 0-16MB (Kernel, etc)
-    // 16MB = 4096 pages
-    for (uint32_t i = 0; i < 4096; i++) {
+    // 2. Identity Map 0-32MB (Kernel, Backbuffer at 16MB, etc)
+    // 32MB = 8192 pages
+    for (uint32_t i = 0; i < 8192; i++) {
         vmm_map_page((void*)(i * 4096), (void*)(i * 4096));
     }
 
