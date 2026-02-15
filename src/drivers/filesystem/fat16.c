@@ -42,7 +42,7 @@ typedef struct {
 
 void init_fat16() {
     uint8_t buffer[512];
-    memory_set((char*)buffer, 0, 512); // Initialize buffer to avoid garbage
+    memory_set((char*)buffer, 0, 512);
 
     if (!ata_read_sector(0, buffer)) {
         kprint("Disk Error: Read Failed or No Disk.\n");
@@ -50,24 +50,34 @@ void init_fat16() {
         return;
     }
 
-    // Check MBR Signature
     if (buffer[510] != 0x55 || buffer[511] != 0xAA) {
         kprint("Disk Warning: No Boot Signature (0x55AA). Skipping FS.\n");
         fs_ready = 0;
         return;
     }
 
-    // Read Partition 1 Entry (Offset 446)
-    uint8_t* p1 = &buffer[446];
-    partition_lba_start = *(uint32_t*)&p1[8];
-    partition_sectors = *(uint32_t*)&p1[12];
-
-    if (partition_lba_start == 0) {
-        // Maybe Superfloppy (no MBR)? Try Sector 0 as Boot Sector
+    // Check for VBR signature (Superfloppy)
+    // 0xEB/0xE9 at offset 0 (JMP) AND 0x29 at offset 38 (Extended Boot Sig)
+    // Actually, offset 38 is 0x29 for FAT12/16.
+    if ((buffer[0] == 0xEB || buffer[0] == 0xE9) && buffer[38] == 0x29) {
+        // Superfloppy
         partition_lba_start = 0;
+        // kprint("Mounting as Superfloppy (FAT16).\n");
+    } else {
+        // Assume MBR
+        uint8_t* p1 = &buffer[446];
+        partition_lba_start = *(uint32_t*)&p1[8];
+        partition_sectors = *(uint32_t*)&p1[12];
+        // kprint("Mounting from Partition 1.\n");
+
+        if (partition_lba_start == 0) {
+             // Fallback if MBR looks empty but we have signature
+             // Check if it looks like BPB anyway?
+             if (buffer[38] == 0x29) partition_lba_start = 0;
+        }
     }
 
-    // Read Boot Sector
+    // Read Boot Sector (if MBR, read partition start; if Superfloppy, read 0 again)
     if (!ata_read_sector(partition_lba_start, buffer)) {
         kprint("Disk Error: Failed to read Boot Sector.\n");
         fs_ready = 0;
@@ -102,25 +112,21 @@ uint16_t read_fat_entry(uint16_t cluster) {
     uint32_t ent_offset = fat_offset % bytes_per_sector;
 
     uint8_t buffer[512];
-    if (!ata_read_sector(fat_sector, buffer)) return 0xFFFF; // Error
+    if (!ata_read_sector(fat_sector, buffer)) return 0xFFFF;
     return *(uint16_t*)&buffer[ent_offset];
 }
 
-// Convert "file.txt" to "FILE    TXT"
 void to_dos_filename(const char* input, char* output) {
     memory_set(output, ' ', 11);
     int i = 0;
     int j = 0;
-    // Name
     while (input[i] && input[i] != '.' && j < 8) {
         char c = input[i++];
         if (c >= 'a' && c <= 'z') c -= 32;
         output[j++] = c;
     }
-    // Skip to dot
     while (input[i] && input[i] != '.') i++;
     if (input[i] == '.') i++;
-    // Ext
     j = 8;
     while (input[i] && j < 11) {
         char c = input[i++];
@@ -136,17 +142,15 @@ int fat16_read_file(const char* filename, void* buffer) {
     to_dos_filename(filename, dos_name);
 
     uint8_t sector[512];
-    // Iterate Root Directory
     uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
 
     for (uint32_t i = 0; i < root_sectors; i++) {
         if (!ata_read_sector(root_dir_start_lba + i, sector)) return 0;
         FatEntry* entries = (FatEntry*)sector;
         for (int j = 0; j < bytes_per_sector / 32; j++) {
-            if (entries[j].name[0] == 0) return 0; // End of dir
-            if (entries[j].name[0] == 0xE5) continue; // Deleted
+            if (entries[j].name[0] == 0) return 0;
+            if (entries[j].name[0] == 0xE5) continue;
 
-            // Compare Name
             int match = 1;
             for (int k = 0; k < 11; k++) {
                 if (((uint8_t*)entries[j].name)[k] != dos_name[k]) {
@@ -156,7 +160,6 @@ int fat16_read_file(const char* filename, void* buffer) {
             }
 
             if (match) {
-                // Found
                 uint16_t cluster = entries[j].cluster_low;
                 uint32_t size = entries[j].size;
                 uint8_t* buf = (uint8_t*)buffer;
@@ -173,13 +176,13 @@ int fat16_read_file(const char* filename, void* buffer) {
                     if (read_size >= size) break;
 
                     cluster = read_fat_entry(cluster);
-                    if (cluster >= 0xFFF8) break; // EOF
+                    if (cluster >= 0xFFF8) break;
                 }
                 return 1;
             }
         }
     }
-    return 0; // Not found
+    return 0;
 }
 
 void fat16_list_directory() {
@@ -201,14 +204,14 @@ void fat16_list_directory() {
         for (int j = 0; j < bytes_per_sector / 32; j++) {
             if (entries[j].name[0] == 0) return;
             if (entries[j].name[0] == 0xE5) continue;
-            if (entries[j].attr & 0x0F) continue; // Long File Name or Vol Label?
+            if (entries[j].attr & 0x0F) continue;
 
             char name[13];
             int k = 0;
             for (int l = 0; l < 8 && entries[j].name[l] != ' '; l++) name[k++] = entries[j].name[l];
             name[k++] = '.';
             for (int l = 0; l < 3 && entries[j].ext[l] != ' '; l++) name[k++] = entries[j].ext[l];
-            if (name[k-1] == '.') k--; // Remove trailing dot if no ext
+            if (name[k-1] == '.') k--;
             name[k] = 0;
 
             kprint("  ");
@@ -232,17 +235,14 @@ int fat16_create_file(const char* filename) {
         FatEntry* entries = (FatEntry*)sector;
         for (int j = 0; j < bytes_per_sector / 32; j++) {
             if (entries[j].name[0] == 0 || entries[j].name[0] == 0xE5) {
-                // Found free slot
                 memory_copy(dos_name, (char*)entries[j].name, 11);
-                entries[j].attr = 0x20; // Archive
+                entries[j].attr = 0x20;
                 entries[j].cluster_low = 0;
                 entries[j].size = 0;
-
-                // Write back
                 ata_write_sector(root_dir_start_lba + i, sector);
                 return 1;
             }
         }
     }
-    return 0; // Root dir full
+    return 0;
 }
