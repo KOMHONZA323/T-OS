@@ -1,0 +1,42 @@
+#ifndef STD_GLH
+#define STD_GLH
+
+/* Standard Definitions */
+#define NULL ((void*)0)
+#define TRUE 1
+#define FALSE 0
+
+/* Primitive Type Definitions (if not built-in) */
+// Assuming int is 32-bit, char is 8-bit
+typedef int int32_t;
+typedef char int8_t;
+typedef unsigned int uint32_t;
+typedef unsigned char uint8_t;
+
+/* System Call Prototypes */
+
+// Window Creation
+// Creates a window with the specified dimensions and title.
+void os_create_window(int width, int height, char* title);
+
+// Process Creation
+// Spawns a new process from the given executable file.
+// Returns process ID or error code.
+int os_spawn_process(char* filename);
+
+/* Standard I/O Prototypes */
+
+// Prints a null-terminated string to the standard output (terminal).
+void print(char* message);
+
+// Reads a single character from standard input (keyboard).
+// Blocking call.
+char get_char();
+
+// Sleep/Delay
+void sleep(int ms);
+
+// Exit current process
+void exit(int status);
+
+#endif
