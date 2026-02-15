@@ -3,6 +3,8 @@
 #include "../../drivers/screen.h"
 #include "../../drivers/keyboard.h"
 #include "../../drivers/timer.h"
+#include "../memory/heap.h"
+#include "../../drivers/utils.h"
 
 // Forward declarations of kernel functions
 // We can include headers, but for now let's just prototype what we need or include them.
@@ -62,10 +64,63 @@ void syscall_handler_c(registers_t *regs) {
             // We can use that for now.
              // We need to include utils.h or declare it.
             // Let's just do a busy loop or nothing for now to satisfy the symbol.
+            delay(regs->ebx);
+            break;
+
+        // File I/O Extensions for T-OS Assembler
+        case SYS_OPEN:
+            // EBX = filename, ECX = flags
+            kprint("Syscall: Open File "); kprint((char*)regs->ebx); kprint("\n");
+            // Mock: return 3 (stdin=0, stdout=1, stderr=2 taken?)
+            regs->eax = 3;
+            break;
+
+        case SYS_READ:
+            // EBX = fd, ECX = buffer, EDX = count
+            // Mock: Read nothing.
+            regs->eax = 0;
+            break;
+
+        case SYS_WRITE:
+            // EBX = fd, ECX = buffer, EDX = count
+            // Mock: Print to screen if fd=1
+            if (regs->ebx == 1) {
+                // kprint handles null-terminated strings, but write might not be.
+                // We should handle 'count'.
+                char* buf = (char*)regs->ecx;
+                uint32_t count = regs->edx;
+                for (uint32_t i = 0; i < count; i++) {
+                    char c[2];
+                    c[0] = buf[i];
+                    c[1] = 0;
+                    kprint(c);
+                }
+            }
+            regs->eax = regs->edx; // Pretend we wrote all
+            break;
+
+        case SYS_CLOSE:
+            // EBX = fd
+            regs->eax = 0;
+            break;
+
+        case SYS_MALLOC:
+            // EBX = size
+            // Use kernel heap. Note: Using kernel heap for user process is insecure but standard for single-address-space hobby OS.
+            regs->eax = (uint32_t)malloc(regs->ebx);
+            break;
+
+        case SYS_FREE:
+            // EBX = ptr
+            free((void*)regs->ebx);
             break;
 
         default:
-            kprint("Unknown Syscall\n");
+            kprint("Unknown Syscall: ");
+            char buf[32];
+            int_to_ascii(syscall_num, buf);
+            kprint(buf);
+            kprint("\n");
             break;
     }
 }
