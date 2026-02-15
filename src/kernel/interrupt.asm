@@ -2,8 +2,8 @@
 ; This file handles the transition from interrupt to C handler
 
 ; Defined in C (idt.c / isr.c)
-[extern isr_handler]
-[extern irq_handler]
+extern isr_handler
+extern irq_handler
 
 ; Make these global so C can link them
 global isr0
@@ -56,6 +56,9 @@ global irq12
 global irq13
 global irq14
 global irq15
+
+; SYSCALL
+global isr128
 
 ; Common ISR Stub
 ; Pushes registers, calls C handler, restores registers
@@ -407,7 +410,8 @@ irq15:
     jmp irq_common_stub
 
 ; SYSCALL (INT 0x80)
-global isr128
+extern syscall_handler_c
+
 isr128:
     cli
     pusha           ; Pushes edi,esi,ebp,esp,ebx,edx,ecx,eax
@@ -419,9 +423,9 @@ isr128:
     mov fs, ax
     mov gs, ax
 
-    ; We need to call syscall_handler_c which we'll define
-    extern syscall_handler_c
+    push esp        ; Push pointer to registers_t (FIX: Added this)
     call syscall_handler_c
+    add esp, 4      ; Clean up stack (FIX: Added this)
 
     pop eax         ; reload the original data segment descriptor
     mov ds, ax

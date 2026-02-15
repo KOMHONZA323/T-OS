@@ -74,3 +74,86 @@ sleep:
 
     pop ebx
     ret
+
+global malloc
+global free
+global open
+global read
+global write
+global close
+
+SYS_OPEN equ 7
+SYS_READ equ 8
+SYS_WRITE equ 9
+SYS_CLOSE equ 10
+SYS_MALLOC equ 11
+SYS_FREE equ 12
+
+malloc:
+    ; void* malloc(int size)
+    push ebx
+    mov eax, SYS_MALLOC
+    mov ebx, [esp+8]
+    int 0x80
+    pop ebx
+    ret
+
+free:
+    ; void free(void* ptr)
+    push ebx
+    mov eax, SYS_FREE
+    mov ebx, [esp+8]
+    int 0x80
+    pop ebx
+    ret
+
+open:
+    ; int open(char* filename, int flags)
+    push ebx
+    push ecx
+    mov eax, SYS_OPEN
+    mov ebx, [esp+12]
+    mov ecx, [esp+16]
+    int 0x80
+    pop ecx
+    pop ebx
+    ret
+
+read:
+    ; int read(int fd, void* buf, int count)
+    push ebx
+    push ecx
+    push edx
+    mov eax, SYS_READ
+    mov ebx, [esp+16]
+    mov ecx, [esp+20]
+    mov edx, [esp+24]
+    int 0x80
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+
+write:
+    ; int write(int fd, void* buf, int count)
+    push ebx
+    push ecx
+    push edx
+    mov eax, SYS_WRITE
+    mov ebx, [esp+16]
+    mov ecx, [esp+20]
+    mov edx, [esp+24]
+    int 0x80
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+
+close:
+    ; int close(int fd)
+    push ebx
+    mov eax, SYS_CLOSE
+    mov ebx, [esp+8]
+    int 0x80
+    pop ebx
+    ret
