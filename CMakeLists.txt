@@ -1,10 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(T-OS C ASM_NASM)
 
-# Compiler Flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffreestanding -m32 -g -fno-pie -fno-stack-protector")
 
-# Paths
 set(BUILD_DIR "${CMAKE_BINARY_DIR}")
 set(BOOT_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage1/boot_sect.asm")
 set(STAGE2_SRC "${CMAKE_SOURCE_DIR}/src/boot/stage2/stage2.asm")
@@ -18,14 +16,12 @@ set(INTERRUPT_OBJ "${BUILD_DIR}/interrupt.o")
 set(KERNEL_BIN "${BUILD_DIR}/kernel.bin")
 set(OS_IMAGE "${BUILD_DIR}/t-os.bin")
 
-# 1. Compile Bootloader (Stage 1)
 add_custom_command(OUTPUT ${BOOT_BIN}
     COMMAND nasm -f bin ${BOOT_SRC} -o ${BOOT_BIN} -I ${CMAKE_SOURCE_DIR}/
     DEPENDS ${BOOT_SRC} "${CMAKE_SOURCE_DIR}/src/boot/stage1/disk_load.asm"
     COMMENT "Assembling Bootloader Stage 1"
 )
 
-# 2. Compile Stage 2 Bootloader
 add_custom_command(OUTPUT ${STAGE2_BIN}
     COMMAND nasm -f bin ${STAGE2_SRC} -o ${STAGE2_BIN} -I ${CMAKE_SOURCE_DIR}/
     DEPENDS ${STAGE2_SRC}
@@ -41,24 +37,19 @@ add_custom_command(OUTPUT ${STAGE2_BIN}
     COMMENT "Assembling Bootloader Stage 2"
 )
 
-# 3. Assemble Kernel Entry
 add_custom_command(OUTPUT ${KERNEL_ENTRY_OBJ}
     COMMAND nasm -f elf ${KERNEL_ENTRY} -o ${KERNEL_ENTRY_OBJ}
     DEPENDS ${KERNEL_ENTRY}
     COMMENT "Assembling Kernel Entry"
 )
 
-# 3.1 Assemble Interrupt Handling
 add_custom_command(OUTPUT ${INTERRUPT_OBJ}
     COMMAND nasm -f elf ${INTERRUPT_ASM} -o ${INTERRUPT_OBJ}
     DEPENDS ${INTERRUPT_ASM}
     COMMENT "Assembling Interrupt Handlers"
 )
 
-# 4. Compile Kernel Sources
 file(GLOB_RECURSE KERNEL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/*.c" "${CMAKE_SOURCE_DIR}/src/drivers/*.c")
-
-# Explicitly ensure syscalls are included
 file(GLOB SYSCALL_SOURCES "${CMAKE_SOURCE_DIR}/src/kernel/syscalls/*.c")
 list(APPEND KERNEL_SOURCES ${SYSCALL_SOURCES})
 list(REMOVE_DUPLICATES KERNEL_SOURCES)
@@ -76,15 +67,12 @@ foreach(SOURCE_FILE ${KERNEL_SOURCES})
     )
 endforeach()
 
-# 5. Link Kernel
-# Note: Kernel loaded at 0x10000 (64KB) to avoid conflict with Stage 2
 add_custom_command(OUTPUT ${KERNEL_BIN}
     COMMAND ld -o ${KERNEL_BIN} -Ttext 0x10000 ${KERNEL_ENTRY_OBJ} ${INTERRUPT_OBJ} ${KERNEL_OBJECTS} --oformat binary -m elf_i386
     DEPENDS ${KERNEL_ENTRY_OBJ} ${INTERRUPT_OBJ} ${KERNEL_OBJECTS}
     COMMENT "Linking Kernel"
 )
 
-# 6. Build TASM for T-OS
 set(SDK_DIR "${CMAKE_SOURCE_DIR}/src/sdk")
 set(TASM_SRC "${SDK_DIR}/tasm.c")
 set(STD_SRC "${SDK_DIR}/std.c")
@@ -96,11 +84,9 @@ set(TASM_OBJ "${BUILD_DIR}/tasm.o")
 set(STD_OBJ "${BUILD_DIR}/std.o")
 set(CRT0_OBJ "${BUILD_DIR}/crt0.o")
 set(SYSCALLS_OBJ "${BUILD_DIR}/syscalls.o")
-set(TASM_ELF "${BUILD_DIR}/tasm.elf")
 set(TASM_BIN "${BUILD_DIR}/tasm.bin")
 set(TASM_TEXF "${BUILD_DIR}/tasm.texf")
 
-# Compile SDK Sources
 add_custom_command(OUTPUT ${TASM_OBJ}
     COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -I${SDK_DIR} -c ${TASM_SRC} -o ${TASM_OBJ}
     DEPENDS ${TASM_SRC}
@@ -118,33 +104,24 @@ add_custom_command(OUTPUT ${SYSCALLS_OBJ}
     DEPENDS ${SYSCALLS_ASM}
 )
 
-# Link TASM
 add_custom_command(OUTPUT ${TASM_BIN}
     COMMAND ld -T ${USER_LD} -o ${TASM_BIN} ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TASM_OBJ} ${STD_OBJ} --oformat binary -m elf_i386
     DEPENDS ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TASM_OBJ} ${STD_OBJ} ${USER_LD}
 )
 
-# Add TEXF Header using make_texf.py
 add_custom_command(OUTPUT ${TASM_TEXF}
     COMMAND python3 ${SDK_DIR}/make_texf.py ${TASM_BIN} ${TASM_TEXF}
     DEPENDS ${TASM_BIN}
 )
 
-# 7. Create OS Image (FAT16)
 add_custom_target(t_os ALL
-    # 1. Combine Boot + Stage 2 (just for intermediate, make_fat handles structure)
-    COMMAND cat ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/kernel_pack.bin
-    # Wait, make_fat expects kernel_bin to contain stage2+kernel.
     COMMAND cat ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/stage2_kernel.bin
-
-    # 2. Invoke make_fat.py
     COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} test.asm=${SDK_DIR}/test.asm
-
+    COMMAND ls -l ${OS_IMAGE}
     DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} ${TASM_TEXF}
     COMMENT "Creating T-OS Disk Image (FAT)"
 )
 
-# 8. Create Bootable ISO (El Torito floppy emulation)
 set(ISO_IMAGE "${BUILD_DIR}/t-os.iso")
 add_custom_target(iso ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${BUILD_DIR}/iso
@@ -157,14 +134,12 @@ add_custom_target(iso ALL
     WORKING_DIRECTORY ${BUILD_DIR}
 )
 
-# 9. Run Target
 add_custom_target(run
     COMMAND qemu-system-i386 -drive file=${OS_IMAGE},format=raw,index=0,if=floppy -vga std -usb -device usb-tablet -serial stdio
     DEPENDS t_os
     COMMENT "Launching T-OS in QEMU"
 )
 
-# 10. Run from ISO
 add_custom_target(run_iso
     COMMAND qemu-system-i386 -cdrom ${ISO_IMAGE} -vga std
     DEPENDS iso

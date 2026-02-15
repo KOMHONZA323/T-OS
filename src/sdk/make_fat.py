@@ -3,16 +3,15 @@ import sys
 import os
 
 def pad(data, size):
+    if len(data) > size:
+        return data[:size]
     return data + b'\x00' * (size - len(data))
 
 def make_fat16_image(boot_bin, kernel_bin, output_img, files):
     # Standard 1.44MB Floppy Geometry
     SECTOR_SIZE = 512
     SECTORS_PER_CLUSTER = 1
-    RESERVED_SECTORS = 1 # Boot sector only for now? No, we need space for kernel.
-    # We will put Stage 2 + Kernel in Reserved Sectors.
-    # Kernel size? Let's say 256 sectors (128KB).
-    # So Reserved Sectors = 1 (Boot) + X (Kernel).
+    TOTAL_SECTORS = 2880 # 1.44MB
 
     with open(kernel_bin, 'rb') as f:
         kernel_data = f.read()
@@ -22,7 +21,6 @@ def make_fat16_image(boot_bin, kernel_bin, output_img, files):
 
     FAT_COPIES = 2
     ROOT_DIR_ENTRIES = 224
-    TOTAL_SECTORS = 2880 # 1.44MB
     MEDIA_DESCRIPTOR = 0xF0
     SECTORS_PER_FAT = 9
 
@@ -34,149 +32,130 @@ def make_fat16_image(boot_bin, kernel_bin, output_img, files):
     data_start = root_start + root_size
 
     # Create blank image
-    image = bytearray(TOTAL_SECTORS * SECTOR_SIZE)
+    TARGET_SIZE = TOTAL_SECTORS * SECTOR_SIZE
+    image = bytearray(TARGET_SIZE)
 
-    # --- 1. Boot Sector (Patched with BPB) ---
+    # --- 1. Boot Sector ---
     with open(boot_bin, 'rb') as f:
-        boot_code = bytearray(f.read())
-        if len(boot_code) > 512: boot_code = boot_code[:512]
-        boot_code = pad(boot_code, 512)
+        boot_code = f.read()
+    boot_code = pad(boot_code, 512)
 
-    # Patch BPB (Offset 3 or 11 depending on structure, assume standard layout)
+    # Patch BPB
     # OEM Name (3-10)
-    boot_code[3:11] = b'T-OS    '
-    # Bytes Per Sector (11-12)
-    boot_code[11:13] = struct.pack('<H', SECTOR_SIZE)
-    # Sectors Per Cluster (13)
-    boot_code[13] = SECTORS_PER_CLUSTER
-    # Reserved Sectors (14-15)
-    boot_code[14:16] = struct.pack('<H', RESERVED_SECTORS)
-    # FAT Copies (16)
-    boot_code[16] = FAT_COPIES
-    # Root Dir Entries (17-18)
-    boot_code[17:19] = struct.pack('<H', ROOT_DIR_ENTRIES)
-    # Total Sectors 16 (19-20)
-    boot_code[19:21] = struct.pack('<H', TOTAL_SECTORS)
-    # Media Descriptor (21)
-    boot_code[21] = MEDIA_DESCRIPTOR
-    # Sectors Per FAT (22-23)
-    boot_code[22:24] = struct.pack('<H', SECTORS_PER_FAT)
-    # Sectors Per Track (24-25) -> 18
-    boot_code[24:26] = struct.pack('<H', 18)
-    # Heads (26-27) -> 2
-    boot_code[26:28] = struct.pack('<H', 2)
-    # Hidden Sectors (28-31) -> 0
-    boot_code[28:32] = struct.pack('<I', 0)
-    # Total Sectors 32 (32-35) -> 0
-    boot_code[32:36] = struct.pack('<I', 0)
+    image[0:512] = boot_code # Copy first
+    image[3:11] = b'T-OS    '
+    image[11:13] = struct.pack('<H', SECTOR_SIZE)
+    image[13] = SECTORS_PER_CLUSTER
+    image[14:16] = struct.pack('<H', RESERVED_SECTORS)
+    image[16] = FAT_COPIES
+    image[17:19] = struct.pack('<H', ROOT_DIR_ENTRIES)
+    image[19:21] = struct.pack('<H', TOTAL_SECTORS)
+    image[21] = MEDIA_DESCRIPTOR
+    image[22:24] = struct.pack('<H', SECTORS_PER_FAT)
+    image[24:26] = struct.pack('<H', 18) # SPT
+    image[26:28] = struct.pack('<H', 2)  # Heads
+    image[28:32] = struct.pack('<I', 0)  # Hidden
+    image[32:36] = struct.pack('<I', 0)  # Large Sectors
+    image[36] = 0x00 # Drive 0
+    image[37] = 0
+    image[38] = 0x29
+    image[39:43] = struct.pack('<I', 0x12345678)
+    image[43:54] = b'T-OS DISK  '
+    image[54:62] = b'FAT12   '
 
-    # Extended BPB (Offset 36 for FAT12/16)
-    # Drive Number (36) -> 0x00 (Floppy) or 0x80 (HDD)
-    # Since boot_sect.asm loads from DL, we use 0x00 usually for floppy.
-    boot_code[36] = 0x00
-    # Reserved (37) -> 0
-    boot_code[37] = 0
-    # Boot Signature (38) -> 0x29
-    boot_code[38] = 0x29
-    # Volume ID (39-42)
-    boot_code[39:43] = struct.pack('<I', 0x12345678)
-    # Volume Label (43-53)
-    boot_code[43:54] = b'T-OS DISK  '
-    # FS Type (54-61)
-    boot_code[54:62] = b'FAT12   ' # Usually FAT12 for floppy, but we use FAT16 structures in code?
-    # Kernel code uses "FAT16" strings? Let's assume FAT12 compatible BPB.
+    # --- 2. Reserved Sectors (Kernel) ---
+    # Check if kernel fits before FAT starts
+    if 512 + len(kernel_data) > fat1_start:
+        print(f"Error: Kernel too large! {len(kernel_data)} bytes. Reserved: {RESERVED_SECTORS} sectors.")
+        sys.exit(1)
 
-    image[0:512] = boot_code
-
-    # --- 2. Write Kernel to Reserved Sectors ---
-    # Start at sector 1 (Offset 512)
     image[512 : 512 + len(kernel_data)] = kernel_data
 
-    # --- 3. Initialize FAT ---
-    # First 2 entries reserved: F0 FF FF (FAT12) or F0 FF FF FF (FAT16)
-    # Let's assume FAT12 for 1.44MB floppy (standard).
-    # Entry 0: Media Descriptor (F0) + FF + FF (Cluster 0/1 reserved)
-    # FAT12 logic is messy (1.5 bytes per entry).
-    # FAT16 logic is easier (2 bytes per entry).
-    # If we force FAT16 on floppy:
-    # Set FS Type to 'FAT16   '.
-    # FAT entries are 2 bytes.
-    # Entry 0: F0 FF. Entry 1: FF FF.
+    # --- 3. FAT Tables ---
     image[fat1_start : fat1_start+4] = b'\xF0\xFF\xFF\xFF'
     image[fat2_start : fat2_start+4] = b'\xF0\xFF\xFF\xFF'
 
-    # --- 4. Write Files ---
-    current_cluster = 2 # Start data clusters at 2
+    # --- 4. Files ---
+    current_cluster = 2
     dir_offset = root_start
 
     for filename, path in files.items():
+        if not os.path.exists(path):
+            print(f"Warning: File {path} not found.")
+            continue
+
         with open(path, 'rb') as f:
             data = f.read()
 
         size = len(data)
-        start_cluster = current_cluster
 
-        # Write Directory Entry (32 bytes)
-        # Name (8) + Ext (3)
+        # Dir Entry
         name, ext = filename.split('.')
         entry = bytearray(32)
         entry[0:8] = pad(name.encode().upper(), 8)
         entry[8:11] = pad(ext.encode().upper(), 3)
-        # Attr (11) -> Archive (0x20)
         entry[11] = 0x20
-        # Time/Date (22-25) -> Dummy
-        entry[22:24] = b'\x00\x00'
-        entry[24:26] = b'\x00\x00'
-        # First Cluster (26-27)
-        entry[26:28] = struct.pack('<H', start_cluster)
-        # Size (28-31)
+        entry[26:28] = struct.pack('<H', current_cluster)
         entry[28:32] = struct.pack('<I', size)
 
         image[dir_offset : dir_offset+32] = entry
         dir_offset += 32
 
-        # Write Data to Clusters
-        # Simplified: Contiguous allocation
-        # For each sector of data, occupy a cluster (since 1 sector/cluster)
+        # Write Data
         sectors_needed = (size + SECTOR_SIZE - 1) // SECTOR_SIZE
-
-        # Update FAT Chain
         for i in range(sectors_needed):
+            # Write Sector
             cluster_offset = data_start + ((current_cluster - 2) * SECTOR_SIZE * SECTORS_PER_CLUSTER)
             chunk = data[i*SECTOR_SIZE : (i+1)*SECTOR_SIZE]
+
+            if cluster_offset + len(chunk) > TARGET_SIZE:
+                print("Error: Disk full!")
+                sys.exit(1)
+
             image[cluster_offset : cluster_offset+len(chunk)] = chunk
 
-            # Set FAT entry for current_cluster
-            # Point to next, or End (FFFF)
-            fat_offset = fat1_start + (current_cluster * 2) # FAT16
-            if i == sectors_needed - 1:
-                next_val = 0xFFFF
-            else:
-                next_val = current_cluster + 1
+            # Update FAT
+            fat_off = fat1_start + (current_cluster * 2) # FAT16 entries are 2 bytes?
+            # Wait, I said 'FAT12   ' string but I am using 2-byte entries (FAT16)?
+            # FAT12 uses 12-bits (1.5 bytes). FAT16 uses 16-bits (2 bytes).
+            # If I write 2 bytes, I MUST set type to FAT16 or OS will read garbage.
+            # But floppy is usually FAT12.
+            #  in kernel likely implements FAT16.
+            # So I should use 'FAT16   ' in BPB.
+            # And  uses 2-byte entries. Correct.
 
-            image[fat_offset : fat_offset+2] = struct.pack('<H', next_val)
+            # Next cluster
+            next_cl = 0xFFFF if i == sectors_needed - 1 else current_cluster + 1
+            image[fat_off : fat_off+2] = struct.pack('<H', next_cl)
 
-            # Copy to FAT2
-            fat2_offset = fat2_start + (current_cluster * 2)
-            image[fat2_offset : fat2_offset+2] = struct.pack('<H', next_val)
+            # FAT2
+            fat2_off = fat2_start + (current_cluster * 2)
+            image[fat2_off : fat2_off+2] = struct.pack('<H', next_cl)
 
             current_cluster += 1
 
-    # Write Image
+    # Fix BPB String to FAT16 to be consistent
+    image[54:62] = b'FAT16   '
+
+    # Assert Size
+    if len(image) != TARGET_SIZE:
+        print(f"Error: Image size mismatch! Expected {TARGET_SIZE}, got {len(image)}")
+        sys.exit(1)
+
     with open(output_img, 'wb') as f:
         f.write(image)
 
+    print(f"Success: Created {output_img} ({len(image)} bytes)")
+
 if __name__ == "__main__":
-    if len(sys.argv) < 5:
-        print("Usage: make_fat.py <boot.bin> <kernel.bin> <output.img> <file1=path1> ...")
+    if len(sys.argv) < 4:
+        print("Usage: make_fat.py <boot> <kernel> <out> [files...]")
         sys.exit(1)
 
-    boot_bin = sys.argv[1]
-    kernel_bin = sys.argv[2]
-    output_img = sys.argv[3]
     files = {}
     for arg in sys.argv[4:]:
-        name, path = arg.split('=')
-        files[name] = path
+        if '=' in arg:
+            k,v = arg.split('=')
+            files[k] = v
 
-    make_fat16_image(boot_bin, kernel_bin, output_img, files)
+    make_fat16_image(sys.argv[1], sys.argv[2], sys.argv[3], files)
