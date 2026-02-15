@@ -9,6 +9,12 @@
 #include "../../drivers/filesystem/fat16.h"
 #include "../../sdk/texf.h"
 
+// Flags for open (mocked to match std.glh)
+#define O_RDONLY 0
+#define O_WRONLY 1
+#define O_RDWR   2
+#define O_CREAT  4
+
 #define MAX_FDS 10
 
 typedef struct {

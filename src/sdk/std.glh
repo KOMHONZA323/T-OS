@@ -43,21 +43,3 @@ int close(int fd);
 #define O_CREAT  4
 
 #endif
-
-// Memory Management
-void* malloc(int size);
-void free(void* ptr);
-
-// File I/O
-// Using standard C style
-// Returns file descriptor or -1 on error
-int open(char* filename, int flags);
-int read(int fd, void* buf, int count);
-int write(int fd, void* buf, int count);
-int close(int fd);
-
-// Flags for open (simplified)
-#define O_RDONLY 0
-#define O_WRONLY 1
-#define O_RDWR   2
-#define O_CREAT  4
