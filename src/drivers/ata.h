@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-void ata_write_sector(uint32_t lba, uint8_t *buffer);
-void ata_read_sector(uint32_t lba, uint8_t *buffer); // Helpful for debugging or reading config back
+int ata_write_sector(uint32_t lba, uint8_t *buffer);
+int ata_read_sector(uint32_t lba, uint8_t *buffer); // Helpful for debugging or reading config back
 
 #endif
