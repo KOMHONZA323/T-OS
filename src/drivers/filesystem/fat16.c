@@ -42,7 +42,13 @@ typedef struct {
 
 void init_fat16() {
     uint8_t buffer[512];
-    ata_read_sector(0, buffer);
+    memory_set((char*)buffer, 0, 512); // Initialize buffer to avoid garbage
+
+    if (!ata_read_sector(0, buffer)) {
+        kprint("Disk Error: Read Failed or No Disk.\n");
+        fs_ready = 0;
+        return;
+    }
 
     // Check MBR Signature
     if (buffer[510] != 0x55 || buffer[511] != 0xAA) {
@@ -52,10 +58,7 @@ void init_fat16() {
     }
 
     // Read Partition 1 Entry (Offset 446)
-    // Structure: Status(1), CHS(3), Type(1), CHS(3), LBA(4), Size(4)
-    // We only care about LBA Start and Type
     uint8_t* p1 = &buffer[446];
-    // uint8_t type = p1[4];
     partition_lba_start = *(uint32_t*)&p1[8];
     partition_sectors = *(uint32_t*)&p1[12];
 
@@ -65,7 +68,11 @@ void init_fat16() {
     }
 
     // Read Boot Sector
-    ata_read_sector(partition_lba_start, buffer);
+    if (!ata_read_sector(partition_lba_start, buffer)) {
+        kprint("Disk Error: Failed to read Boot Sector.\n");
+        fs_ready = 0;
+        return;
+    }
 
     bytes_per_sector = *(uint16_t*)&buffer[11];
     sectors_per_cluster = buffer[13];
@@ -95,7 +102,7 @@ uint16_t read_fat_entry(uint16_t cluster) {
     uint32_t ent_offset = fat_offset % bytes_per_sector;
 
     uint8_t buffer[512];
-    ata_read_sector(fat_sector, buffer);
+    if (!ata_read_sector(fat_sector, buffer)) return 0xFFFF; // Error
     return *(uint16_t*)&buffer[ent_offset];
 }
 
@@ -133,7 +140,7 @@ int fat16_read_file(const char* filename, void* buffer) {
     uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
 
     for (uint32_t i = 0; i < root_sectors; i++) {
-        ata_read_sector(root_dir_start_lba + i, sector);
+        if (!ata_read_sector(root_dir_start_lba + i, sector)) return 0;
         FatEntry* entries = (FatEntry*)sector;
         for (int j = 0; j < bytes_per_sector / 32; j++) {
             if (entries[j].name[0] == 0) return 0; // End of dir
@@ -158,7 +165,7 @@ int fat16_read_file(const char* filename, void* buffer) {
                 while (read_size < size) {
                     uint32_t lba = cluster_to_lba(cluster);
                     for (int s = 0; s < sectors_per_cluster; s++) {
-                        ata_read_sector(lba + s, buf);
+                        if (!ata_read_sector(lba + s, buf)) return 0;
                         buf += 512;
                         read_size += 512;
                         if (read_size >= size) break;
@@ -186,7 +193,10 @@ void fat16_list_directory() {
 
     kprint("Files:\n");
     for (uint32_t i = 0; i < root_sectors; i++) {
-        ata_read_sector(root_dir_start_lba + i, sector);
+        if (!ata_read_sector(root_dir_start_lba + i, sector)) {
+            kprint("Read Error listing dir.\n");
+            return;
+        }
         FatEntry* entries = (FatEntry*)sector;
         for (int j = 0; j < bytes_per_sector / 32; j++) {
             if (entries[j].name[0] == 0) return;
@@ -218,7 +228,7 @@ int fat16_create_file(const char* filename) {
     uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
 
     for (uint32_t i = 0; i < root_sectors; i++) {
-        ata_read_sector(root_dir_start_lba + i, sector);
+        if (!ata_read_sector(root_dir_start_lba + i, sector)) return 0;
         FatEntry* entries = (FatEntry*)sector;
         for (int j = 0; j < bytes_per_sector / 32; j++) {
             if (entries[j].name[0] == 0 || entries[j].name[0] == 0xE5) {
