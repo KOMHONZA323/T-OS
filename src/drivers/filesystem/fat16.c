@@ -22,6 +22,8 @@ static uint32_t fat_start_lba;
 static uint32_t root_dir_start_lba;
 static uint32_t data_start_lba;
 
+static int fs_ready = 0;
+
 typedef struct {
     uint8_t name[8];
     uint8_t ext[3];
@@ -44,7 +46,8 @@ void init_fat16() {
 
     // Check MBR Signature
     if (buffer[510] != 0x55 || buffer[511] != 0xAA) {
-        kprint("Disk Error: No MBR\n");
+        kprint("Disk Warning: No Boot Signature (0x55AA). Skipping FS.\n");
+        fs_ready = 0;
         return;
     }
 
@@ -76,6 +79,8 @@ void init_fat16() {
     fat_start_lba = partition_lba_start + reserved_sectors;
     root_dir_start_lba = fat_start_lba + (num_fats * sectors_per_fat);
     data_start_lba = root_dir_start_lba + (root_entries * 32 / bytes_per_sector);
+
+    fs_ready = 1;
 }
 
 // Convert Cluster to LBA
@@ -118,6 +123,8 @@ void to_dos_filename(const char* input, char* output) {
 }
 
 int fat16_read_file(const char* filename, void* buffer) {
+    if (!fs_ready) return 0;
+
     char dos_name[11];
     to_dos_filename(filename, dos_name);
 
@@ -169,6 +176,11 @@ int fat16_read_file(const char* filename, void* buffer) {
 }
 
 void fat16_list_directory() {
+    if (!fs_ready) {
+        kprint("No Filesystem mounted.\n");
+        return;
+    }
+
     uint8_t sector[512];
     uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
 
@@ -197,6 +209,8 @@ void fat16_list_directory() {
 }
 
 int fat16_create_file(const char* filename) {
+    if (!fs_ready) return 0;
+
     char dos_name[11];
     to_dos_filename(filename, dos_name);
 
