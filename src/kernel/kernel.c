@@ -79,7 +79,7 @@ void process_command(char* cmd) {
 
     // Help
     if (cmd[0] == 'h' && cmd[1] == 'e' && cmd[2] == 'l' && cmd[3] == 'p') {
-        term_print("Commands: help, cls, shutdown, reboot, ls");
+        term_print("Commands: help, cls, shutdown, reboot, ls, tasm\n  tasm: Run assembler");
     }
     // Cls
     else if (cmd[0] == 'c' && cmd[1] == 'l' && cmd[2] == 's') {
@@ -131,6 +131,7 @@ void kernel_main(void) {
     // 4. Input & Multitasking
     init_mouse();
     init_scheduler();
+    init_fat16();
 
     // Init FAT16
     init_fat16();
