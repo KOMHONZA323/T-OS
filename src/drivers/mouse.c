@@ -41,11 +41,16 @@ void init_mouse() {
     mouse_wait(1);
     port_byte_out(0x64, 0xA8);
 
-    // Enable Interrupts
+    // Enable Interrupts (Get Compaq Status Byte)
     mouse_wait(1);
     port_byte_out(0x64, 0x20); // Command: Read Byte 0
     mouse_wait(0);
     status = (port_byte_in(0x60) | 2); // Enable IRQ 12
+    // Also clear bit 5 (Disable Mouse) just in case? No, bit 5=1 means disabled. So we want bit 5=0.
+    // Standard byte: [7:Reserved][6:Translate][5:DisableAux][4:DisableKey][3:Reserved][2:System][1:EnableAuxIRQ][0:EnableKeyIRQ]
+    // We want bit 1=1 (Enable Aux IRQ) and bit 5=0 (Enable Aux).
+    status = (status | 2) & ~0x20;
+
     mouse_wait(1);
     port_byte_out(0x64, 0x60); // Command: Write Byte 0
     mouse_wait(1);
@@ -65,12 +70,14 @@ void init_mouse() {
 }
 
 void mouse_handler(registers_t *regs) {
+    // Check status register to ensure data is for mouse?
+    // Bit 5 (0x20) = 1 means AUX.
+    // If we handle both keyboard and mouse, checking this is good practice to avoid mixing packets.
     uint8_t status = port_byte_in(0x64);
-    // Bit 5 (0x20) is Mouse (Aux)
-    // However, some emulators/hardware might not set it reliably if we just got an IRQ 12.
-    // If we are in this handler, it *is* an IRQ 12 (verified in isr.c).
-    // So we should just read the byte.
-    // if (!(status & 0x20)) return;
+    if (!(status & 0x01)) return; // Output buffer empty?
+    // If bit 5 is 0, it's keyboard data that triggered IRQ1?
+    // But we are in IRQ12 handler.
+    // QEMU sometimes quirks this. We will just read 0x60.
 
     uint8_t b = port_byte_in(0x60);
 
@@ -82,9 +89,16 @@ void mouse_handler(registers_t *regs) {
         case 0:
             // Bit 3 MUST be 1. But some mice might not set it?
             // If it's 0, we are definitely out of sync.
+            // With USB Tablet, packet format might differ if not legacy mode?
+            // Standard PS/2: Yovfl Xovfl Ysign Xsign 1 M R L
+            // If we use USB Tablet, it should be absolute?
+            // If BIOS emulation is active, it sends standard relative PS/2 packets.
+            // Let's assume standard PS/2 for now.
             if ((b & 0x08) == 0) {
                 // Try to resync? Skip?
                 // For now, return and wait for next byte hoping it's the start
+                // Or maybe we just accept it if it's 0 but others are valid?
+                // Let's relax this check slightly or just return.
                 return;
             }
             mouse_byte[0] = b;
@@ -102,19 +116,17 @@ void mouse_handler(registers_t *regs) {
             int8_t x_rel = mouse_byte[1];
             int8_t y_rel = mouse_byte[2];
 
-            // Flags
             uint8_t flags = mouse_byte[0];
 
             // Overflow handling
             if (flags & 0xC0) return; // Overflow X or Y
 
-            // Sign extension for 9-bit mode (if applicable, but usually 8-bit rel)
-            // But standard PS/2 is 9-bit X/Y signed? No, it's 8-bit with sign bit in byte 0.
-            // Byte 0: Yovfl Xovfl Ysign Xsign 1 M R L
-
             int32_t rel_x = (int32_t)mouse_byte[1];
             int32_t rel_y = (int32_t)mouse_byte[2];
 
+            // If we cast to int8_t first, sign extension happens automatically?
+            // Yes, (int32_t)(int8_t)x works.
+            // But let's be explicit with flags
             if (flags & 0x10) rel_x |= 0xFFFFFF00; // Sign extend X
             if (flags & 0x20) rel_y |= 0xFFFFFF00; // Sign extend Y
 
