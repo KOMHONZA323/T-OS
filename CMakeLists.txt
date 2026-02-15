@@ -37,6 +37,7 @@ add_custom_command(OUTPUT ${STAGE2_BIN}
             "${CMAKE_SOURCE_DIR}/src/boot/stage2/vbe.asm"
             "${CMAKE_SOURCE_DIR}/src/boot/stage2/menu.asm"
             "${CMAKE_SOURCE_DIR}/src/boot/stage2/data.asm"
+            "${CMAKE_SOURCE_DIR}/src/boot/stage2/memory_map.asm"
     COMMENT "Assembling Bootloader Stage 2"
 )
 
