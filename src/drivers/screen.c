@@ -470,7 +470,19 @@ uint32_t vga_to_rgb(uint8_t attr) { return vga_palette[attr & 0x0F]; }
 static inline int abs(int x) { return x < 0 ? -x : x; }
 
 void put_pixel_alpha(int x, int y, uint32_t color) {
-    if (g_bpp == 0) return; // No alpha in text mode
+    if (g_bpp == 0) {
+        // Fallback for Text Mode mouse drawing
+        // We can't really alpha blend, but we can set the attribute
+        // to inverted or something?
+        // Or just map to closest char cell?
+        // kernel_main calls draw_rect_px for mouse.
+        // Let's implement a hacky rect fill for text mode here if needed,
+        // but wait, draw_rect_px calls this.
+        // For text mode, we should really use hardware cursor or character replacement.
+        // But since this function is per-pixel, it's hard.
+        // We'll leave it as return for now, assuming user is in VBE mode.
+        return;
+    }
 
     // In VGA mode, we don't read back easily for alpha blending
     // Fallback: just draw opaque pixel for now or use simplified logic
@@ -509,7 +521,24 @@ void put_pixel_alpha(int x, int y, uint32_t color) {
 }
 
 void draw_rect_px(int x, int y, int width, int height, uint32_t color) {
-    if (g_bpp == 0) return; // Not supported in text mode
+    if (g_bpp == 0) {
+        // Basic support for Text Mode Mouse Cursor
+        // Map pixel coords to char coords
+        int col_start = x / 8;
+        int row_start = y / 16;
+        int col_end = (x + width) / 8;
+        int row_end = (y + height) / 16;
+
+        for (int r = row_start; r <= row_end; r++) {
+            for (int c = col_start; c <= col_end; c++) {
+                if (c >= MAX_COLS || r >= MAX_ROWS) continue;
+                char* vidmem = (char*)g_framebuffer + (r * MAX_COLS + c) * 2;
+                // Invert color attribute for cursor effect
+                vidmem[1] = (vidmem[1] ^ 0x77);
+            }
+        }
+        return;
+    }
 
     if (x < 0) { width += x; x = 0; }
     if (y < 0) { height += y; y = 0; }
