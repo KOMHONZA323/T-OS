@@ -56,7 +56,7 @@ def make_fat16_image(boot_bin, kernel_bin, output_img, files):
     image[26:28] = struct.pack('<H', 2)  # Heads
     image[28:32] = struct.pack('<I', 0)  # Hidden
     image[32:36] = struct.pack('<I', 0)  # Large Sectors
-    image[36] = 0x00 # Drive 0
+    image[36] = 0x80 # Drive 0
     image[37] = 0
     image[38] = 0x29
     image[39:43] = struct.pack('<I', 0x12345678)

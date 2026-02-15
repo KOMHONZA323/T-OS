@@ -135,7 +135,7 @@ add_custom_target(iso ALL
 )
 
 add_custom_target(run
-    COMMAND qemu-system-i386 -drive file=${OS_IMAGE},format=raw,index=0,if=floppy -vga std -usb -device usb-tablet -serial stdio
+    COMMAND qemu-system-i386 -drive file=${OS_IMAGE},format=raw,index=0,media=disk -vga std -usb -device usb-tablet -serial stdio
     DEPENDS t_os
     COMMENT "Launching T-OS in QEMU"
 )
