@@ -124,16 +124,9 @@ add_custom_command(OUTPUT ${TASM_BIN}
     DEPENDS ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TASM_OBJ} ${STD_OBJ} ${USER_LD}
 )
 
-# Add TEXF Header (Manual hex edit or helper script? Python helper)
-# We can use a simple python oneliner or reusing make_fat.py? No.
-# Let's assume tasm.bin is code.
-# Header: Magic(3)+Ver(1)+CodeOff(20)+CodeSize(?)+DataOff(0)+DataSize(0)+Entry(0)
-# Header size = 3+1+4+4+4+4+4 = 24 bytes.
-# Entry point relative to code start? _start is at 0x400000.
-# If we load at 0x400000, entry is 0.
-# We need a script to prepend header.
+# Add TEXF Header using make_texf.py
 add_custom_command(OUTPUT ${TASM_TEXF}
-    COMMAND python3 -c "import sys; import struct; d=open('${TASM_BIN}','rb').read(); h=struct.pack('<3sBIIIII', b'TOS', 1, 24, len(d), 0, 0, 0); open('${TASM_TEXF}','wb').write(h+d)"
+    COMMAND python3 ${SDK_DIR}/make_texf.py ${TASM_BIN} ${TASM_TEXF}
     DEPENDS ${TASM_BIN}
 )
 
