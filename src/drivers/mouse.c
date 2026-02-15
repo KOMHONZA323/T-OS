@@ -49,7 +49,8 @@ void init_mouse() {
     // Also clear bit 5 (Disable Mouse) just in case? No, bit 5=1 means disabled. So we want bit 5=0.
     // Standard byte: [7:Reserved][6:Translate][5:DisableAux][4:DisableKey][3:Reserved][2:System][1:EnableAuxIRQ][0:EnableKeyIRQ]
     // We want bit 1=1 (Enable Aux IRQ) and bit 5=0 (Enable Aux).
-    status = (status | 2) & ~0x20;
+    // We ALSO want Bit 6=1 (Enable Translation) to ensure keyboard scancodes are Set 1 (XT).
+    status = (status | 2 | 0x40) & ~0x20;
 
     mouse_wait(1);
     port_byte_out(0x64, 0x60); // Command: Write Byte 0
@@ -59,6 +60,12 @@ void init_mouse() {
     // Default Settings
     mouse_write(0xF6);
     mouse_read(); // Acknowledge (0xFA)
+
+    // Set Sample Rate to 200 (reduce lag)
+    mouse_write(0xF3);
+    mouse_read(); // ACK
+    mouse_write(200);
+    mouse_read(); // ACK
 
     // Enable Data Reporting
     mouse_write(0xF4);
