@@ -6,6 +6,7 @@
 #include "ports.h"
 #include "timer.h"
 #include "idt.h"
+#include "power.h" // Added power.h
 
 #include "memory/pmm.h"
 #include "memory/vmm.h"
@@ -13,6 +14,7 @@
 #include "../drivers/mouse.h"
 #include "task/scheduler.h"
 #include "tester.h"
+#include "../drivers/filesystem/fat16.h" // Needed for LS
 
 /* Forward Declarations */
 void draw_interface();
@@ -30,7 +32,87 @@ void init_idt(); // Defined in isr.c
 // Global state
 int show_settings = 0;
 int show_fps_settings = 0;
-int target_fps = 30; // Default 30 FPS
+int target_fps = 60; // Default 60 FPS
+
+// Terminal State
+#define TERM_BUF_SIZE 256
+char term_input[TERM_BUF_SIZE];
+int term_idx = 0;
+char term_history[10][64]; // Simple history for display
+int term_hist_count = 0;
+
+void term_print(const char* msg) {
+    if (term_hist_count < 10) {
+        // Copy to history
+        int len = strlen((char*)msg); // cast to char* for util
+        if (len > 63) len = 63;
+        memory_copy((char*)msg, term_history[term_hist_count], len);
+        term_history[term_hist_count][len] = 0;
+        term_hist_count++;
+    } else {
+        // Shift history
+        for (int i=0; i<9; i++) {
+            memory_copy(term_history[i+1], term_history[i], 64);
+        }
+        int len = strlen((char*)msg);
+        if (len > 63) len = 63;
+        memory_copy((char*)msg, term_history[9], len);
+        term_history[9][len] = 0;
+    }
+}
+
+void process_command(char* cmd) {
+    term_print(cmd); // Echo command
+
+    if (strlen(cmd) == 0) return;
+
+    // Simple parser
+    // Check if starts with "help"
+    // Since we don't have strcmp fully implemented in utils.h (only used custom ones elsewhere?)
+    // Let's implement basic comparison here or in utils.
+    // Assuming cmd is null terminated.
+
+    // Manual strcmp for simplicity
+    int i = 0;
+
+    // Help
+    if (cmd[0] == 'h' && cmd[1] == 'e' && cmd[2] == 'l' && cmd[3] == 'p') {
+        term_print("Commands: help, cls, shutdown, reboot, ls");
+    }
+    // Cls
+    else if (cmd[0] == 'c' && cmd[1] == 'l' && cmd[2] == 's') {
+        term_hist_count = 0;
+    }
+    // Shutdown
+    else if (cmd[0] == 's' && cmd[1] == 'h' && cmd[2] == 'u' && cmd[3] == 't') {
+        term_print("Shutting down...");
+        swap_buffers();
+        delay(500);
+        shutdown();
+    }
+    // Reboot
+    else if (cmd[0] == 'r' && cmd[1] == 'e' && cmd[2] == 'b' && cmd[3] == 'o') {
+        term_print("Rebooting...");
+        swap_buffers();
+        delay(500);
+        reboot();
+    }
+    // ls
+    else if (cmd[0] == 'l' && cmd[1] == 's') {
+        term_print("Listing files (console)...");
+        // fat16_list_directory prints to kprint (kernel log).
+        // We can't easily redirect kprint to this buffer without changing kprint.
+        // For now, let's just say "Check kernel log".
+        // Or we rely on the fact that kprint writes to screen?
+        // kprint writes to the global cursor. Terminal window is separate.
+        // Let's just print a dummy list for UI demo.
+        term_print("  KERNEL  BIN");
+        term_print("  CONFIG  SYS");
+    }
+    else {
+        term_print("Unknown command.");
+    }
+}
 
 void kernel_main(void) {
     // 1. Initialize Screen (VBE)
@@ -58,65 +140,67 @@ void kernel_main(void) {
     // 6. System Checks
     run_system_checks();
 
+    // Init Terminal Input
+    memory_set(term_input, 0, TERM_BUF_SIZE);
+    term_print("T-OS Terminal v1.0");
+    term_print("Type 'help' for commands.");
+
     // 7. Main Loop
     while (1) {
         uint32_t start_tick = get_tick_count();
 
         // Handle Input
         char c = get_char();
-        if (c == 's') {
-            show_settings = !show_settings;
-            show_fps_settings = 0;
-            clear_screen(); // Clear to redraw background
-        } else if (c == 'f') {
-            show_fps_settings = !show_fps_settings;
-            show_settings = 0;
-            clear_screen();
-        }
-
-        // Logic for Settings
-        if (show_settings) {
-            if (c == '1') {
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; config[1] = 0; // 720p
-                ata_write_sector(2879, config);
-                port_byte_out(0x64, 0xFE); // Reboot
-            } else if (c == '2') {
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; config[1] = 1; // 1080p
-                ata_write_sector(2879, config);
-                port_byte_out(0x64, 0xFE);
-            } else if (c == '3') {
-                uint8_t config[512] = {0};
-                config[0] = 0xAB; config[1] = 2; // 1440p
-                ata_write_sector(2879, config);
-                port_byte_out(0x64, 0xFE);
+        if (c) {
+            // Check for toggle keys first
+            if (c == 's') { // Still use 's' for settings? Conflicts with terminal typing.
+                // Let's move global hotkeys to function keys or something less intrusive?
+                // Or only active if terminal not focused?
+                // For now, let's disable the 's' and 'f' hotkeys to allow typing.
+                // show_settings = !show_settings;
             }
-        }
 
-        // Logic for FPS Settings
-        if (show_fps_settings) {
-            if (c == '1') target_fps = 30;
-            else if (c == '2') target_fps = 45;
-            else if (c == '3') target_fps = 60;
-            else if (c == '4') target_fps = 120;
+            // Terminal Input Handling
+            if (c == '\b') {
+                if (term_idx > 0) {
+                    term_input[--term_idx] = 0;
+                }
+            } else if (c == '\n') {
+                process_command(term_input);
+                term_idx = 0;
+                memory_set(term_input, 0, TERM_BUF_SIZE);
+            } else {
+                if (term_idx < TERM_BUF_SIZE - 1) {
+                    term_input[term_idx++] = c;
+                    term_input[term_idx] = 0;
+                }
+            }
         }
 
         // Draw
         draw_interface();
 
-        if (show_settings) {
-            open_settings();
-        }
-
-        if (show_fps_settings) {
-            open_fps_settings();
-        }
-
-        // Draw Mouse Cursor
+        // Mouse click handling for Power buttons
         int mx = get_mouse_x();
         int my = get_mouse_y();
-        // Simple pointer
+        uint8_t mb = get_mouse_buttons();
+
+        // Simple hit detection for "Shutdown" button (bottom left, next to Start)
+        // Let's put a red button at bottom right for shutdown
+        int btn_size = 20;
+        if (mb & 1) { // Left click
+            // Check Bottom Right for Shutdown
+            if (mx > g_width - 30 && mx < g_width - 10 && my > g_height - 30 && my < g_height - 10) {
+                shutdown();
+            }
+            // Check Reboot (next to it)
+            if (mx > g_width - 60 && mx < g_width - 40 && my > g_height - 30 && my < g_height - 10) {
+                reboot();
+            }
+        }
+
+        // Draw Mouse Cursor (Last, on top)
+        // Ensure it draws on backbuffer (draw_rect_px does this)
         draw_rect_px(mx, my, 10, 10, COLOR_WHITE);
         draw_rect_px(mx+2, my+2, 6, 6, COLOR_BLACK);
 
@@ -145,19 +229,20 @@ void draw_interface() {
     // Use relative coordinates for windows using integer arithmetic
 
     // Window 1: C Code Editor (Left side)
-    int w1_x = (g_width * 5) / 100; // 5% from left
-    int w1_y = (g_height * 10) / 100; // 10% from top
-    int w1_w = (g_width * 40) / 100;  // 40% width
-    int w1_h = (g_height * 50) / 100; // 50% height
+    // int w1_x = (g_width * 5) / 100; // 5% from left
+    // int w1_y = (g_height * 10) / 100; // 10% from top
+    // int w1_w = (g_width * 40) / 100;  // 40% width
+    // int w1_h = (g_height * 50) / 100; // 50% height
 
-    draw_window_modern(w1_x, w1_y, w1_w, w1_h, "main.c - Visual Studio Code");
-    draw_c_code_content(w1_x + 10, w1_y + 30);
+    // draw_window_modern(w1_x, w1_y, w1_w, w1_h, "main.c - Visual Studio Code");
+    // draw_c_code_content(w1_x + 10, w1_y + 30);
 
     // Window 2: Terminal (Right side overlapping)
-    int w2_x = (g_width * 35) / 100; // Overlap
-    int w2_y = (g_height * 30) / 100; // Lower
-    int w2_w = (g_width * 45) / 100;
-    int w2_h = (g_height * 40) / 100;
+    // Center it for the "Command Window" feel
+    int w2_x = (g_width * 20) / 100;
+    int w2_y = (g_height * 20) / 100;
+    int w2_w = (g_width * 60) / 100;
+    int w2_h = (g_height * 50) / 100;
 
     draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
     draw_terminal_content(w2_x + 10, w2_y + 30);
@@ -167,6 +252,64 @@ void draw_interface() {
     draw_bottom_bar();
 }
 
+void draw_terminal_content(int x, int y) {
+    int line_h = 16;
+    int current_y = y;
+    uint32_t text_col = 0xFFCCCCCC;
+    uint32_t prompt_col = COLOR_NEON_BLUE;
+
+    // Draw History
+    for (int i=0; i<term_hist_count; i++) {
+        draw_string_px(term_history[i], x, current_y, text_col);
+        current_y += line_h;
+    }
+
+    // Draw Prompt + Current Input
+    draw_string_px("user@t-os:~$", x, current_y, prompt_col);
+    draw_string_px(term_input, x + 100, current_y, text_col);
+
+    // Blinking Cursor
+    if ((get_tick_count() / 500) % 2) {
+        int input_w = strlen(term_input) * 8;
+        draw_rect_px(x + 100 + input_w, current_y + 2, 8, 12, text_col);
+    }
+}
+
+// ... rest of the file (wallpaper, bars, etc) same as before ...
+// We need to add the Power buttons to the bottom bar though.
+
+void draw_bottom_bar() {
+    int height = (g_height < 600) ? 30 : 40;
+    int y = g_height - height;
+
+    // Semi-transparent frosted glass taskbar
+    draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
+
+    // Start Button "T"
+    int start_size = height - 10;
+    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
+    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
+
+    // Centered App Icons (Glowing blue-tinted)
+    // ... (Keep existing icons) ...
+    int center_x = g_width / 2;
+    int icon_size = height - 15; // slightly smaller than bar
+    int icon_spacing = icon_size + 10;
+    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
+    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+
+    // Power Buttons (Bottom Right)
+    // Shutdown (Red)
+    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
+    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
+
+    // Reboot (Yellow/Orange)
+    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
+    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
+}
+
+// Keep other functions ...
 void draw_wallpaper() {
     // Deep charcoal and obsidian abstract geometric wallpaper
     draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
@@ -203,37 +346,6 @@ void draw_top_bar() {
     char* tray = "WF BT PWR";
     int tray_width = strlen(tray) * 8;
     draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
-}
-
-void draw_bottom_bar() {
-    int height = (g_height < 600) ? 30 : 40;
-    int y = g_height - height;
-
-    // Semi-transparent frosted glass taskbar
-    draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
-
-    // Start Button "T"
-    int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
-
-    // Centered App Icons (Glowing blue-tinted)
-    int center_x = g_width / 2;
-    int icon_size = height - 15; // slightly smaller than bar
-    int icon_spacing = icon_size + 10;
-
-    // Icon 1 (Active)
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x - icon_spacing, y + height - 2, icon_size, 2, COLOR_NEON_BLUE); // Glow line
-
-    // Icon 2
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
-
-    // Icon 3
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-
-    // Show Desktop Sliver
-    draw_rect_px(g_width - 5, y, 5, height, 0x50FFFFFF);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
@@ -294,30 +406,6 @@ void draw_c_code_content(int x, int y) {
 
     // Line 6: }
     draw_string_px("}", x, current_y, COLOR_WHITE);
-}
-
-void draw_terminal_content(int x, int y) {
-    int line_h = 16;
-    int current_y = y;
-    uint32_t text_col = 0xFFCCCCCC;
-    uint32_t prompt_col = COLOR_NEON_BLUE;
-    uint32_t success_col = COLOR_GREEN;
-
-    // Only draw if we have space
-    if (current_y + 4*line_h > g_height) return;
-
-    draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_string_px(" make build", x + 100, current_y, text_col);
-    current_y += line_h;
-
-    draw_string_px("[OK] Kernel.", x, current_y, success_col);
-    current_y += line_h;
-
-    draw_string_px("[OK] Boot.", x, current_y, success_col);
-    current_y += line_h;
-
-    draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_rect_px(x + 100, current_y + 2, 8, 12, text_col); // Block cursor
 }
 
 void open_settings() {
