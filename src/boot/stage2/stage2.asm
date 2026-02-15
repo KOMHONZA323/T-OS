@@ -152,3 +152,6 @@ BEGIN_PM:
     call print_string_pm
     call 0x10000
     jmp $
+
+; Pad Stage 2 to 8KB (16 sectors)
+times 8192 - ($ - $$) db 0
