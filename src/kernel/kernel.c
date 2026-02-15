@@ -142,8 +142,13 @@ void kernel_main(void) {
 
     // Init Terminal Input
     memory_set(term_input, 0, TERM_BUF_SIZE);
-    term_print("T-OS Terminal v1.0");
-    term_print("Type 'help' for commands.");
+    // Pre-populate history for "Showcase" effect
+    term_print("user@t-os:~$ nasm -f elf64 kernel.asm -o kernel.o");
+    term_print("[SUCCESS] ASM compilation complete.");
+    term_print("user@t-os:~$ gcc -c kernel.c -o kernel.o");
+    term_print("user@t-os:~$ ld -o kernel.bin kernel.o");
+    term_print("[SUCCESS] Build complete.");
+    term_print("user@t-os:~$");
 
     // 7. Main Loop
     while (1) {
@@ -180,21 +185,21 @@ void kernel_main(void) {
         // Draw
         draw_interface();
 
-        // Mouse click handling for Power buttons
+        // Mouse click handling
         int mx = get_mouse_x();
         int my = get_mouse_y();
         uint8_t mb = get_mouse_buttons();
 
-        // Simple hit detection for "Shutdown" button (bottom left, next to Start)
-        // Let's put a red button at bottom right for shutdown
-        int btn_size = 20;
         if (mb & 1) { // Left click
-            // Check Bottom Right for Shutdown
-            if (mx > g_width - 30 && mx < g_width - 10 && my > g_height - 30 && my < g_height - 10) {
+            // Check for interactions (Start, Activities, etc.) if needed
+            // Power Button (Top Right) area
+            if (mx > g_width - 40 && my < 30) {
                 shutdown();
             }
-            // Check Reboot (next to it)
-            if (mx > g_width - 60 && mx < g_width - 40 && my > g_height - 30 && my < g_height - 10) {
+        }
+        if (mb & 2) { // Right click
+            // Power Button (Top Right) area - Reboot
+            if (mx > g_width - 40 && my < 30) {
                 reboot();
             }
         }
@@ -299,14 +304,11 @@ void draw_bottom_bar() {
     draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
     draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
 
-    // Power Buttons (Bottom Right)
-    // Shutdown (Red)
-    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
-    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
-
-    // Reboot (Yellow/Orange)
-    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
-    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
+    // Show Desktop Sliver (Far Right)
+    // Small "Show Desktop" sliver on the far right
+    draw_rect_alpha(g_width - 10, y, 10, height, 0x40FFFFFF);
+    // Subtle separator
+    draw_rect_px(g_width - 11, y, 1, height, 0x20FFFFFF);
 }
 
 // Keep other functions ...
@@ -343,9 +345,24 @@ void draw_top_bar() {
     draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
     // System Tray (Wi-Fi, Battery, Power)
-    char* tray = "WF BT PWR";
-    int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
+    // Draw Icons (Right to Left)
+    int icon_y = (height - 12) / 2;
+    int current_x = g_width - 20;
+
+    // Power Icon
+    draw_circle(current_x + 6, icon_y + 6, 5, COLOR_TOP_BAR_TEXT, 0); // Circle
+    draw_line(current_x + 6, icon_y + 1, current_x + 6, icon_y + 6, COLOR_TOP_BAR_TEXT); // Line
+    current_x -= 20;
+
+    // Battery Icon
+    draw_rect_px(current_x, icon_y + 3, 10, 6, COLOR_TOP_BAR_TEXT); // Body
+    draw_rect_px(current_x + 10, icon_y + 4, 2, 4, COLOR_TOP_BAR_TEXT); // Nub
+    current_x -= 20;
+
+    // Wi-Fi Icon (Bars)
+    draw_rect_px(current_x + 5, icon_y + 8, 2, 4, COLOR_TOP_BAR_TEXT);
+    draw_rect_px(current_x + 2, icon_y + 5, 2, 7, COLOR_TOP_BAR_TEXT);
+    draw_rect_px(current_x + 8, icon_y + 2, 2, 10, COLOR_TOP_BAR_TEXT);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {

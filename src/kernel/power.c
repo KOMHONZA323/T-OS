@@ -18,7 +18,7 @@ void shutdown() {
 
 void reboot() {
     // 1. 8042 Keyboard Controller Pulse
-    uint8_t temp;
+    unsigned char temp;
 
     // Clear buffer
     do {
