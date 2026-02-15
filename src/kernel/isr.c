@@ -8,6 +8,7 @@
 extern registers_t* timer_callback(registers_t *regs);
 extern void keyboard_handler(registers_t *regs); // Changed from keyboard_callback to keyboard_handler
 extern void mouse_handler(registers_t *regs);
+extern void syscall_handler(registers_t *regs);
 extern uint32_t tick;
 
 void isr_handler(registers_t *regs) {
@@ -121,4 +122,6 @@ void init_idt() {
     set_idt_gate(45, (uint32_t)irq13);
     set_idt_gate(46, (uint32_t)irq14);
     set_idt_gate(47, (uint32_t)irq15);
+    extern void isr128();
+    set_idt_gate(128, (uint32_t)isr128);
 }
