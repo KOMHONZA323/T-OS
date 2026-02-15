@@ -16,6 +16,8 @@
 #include "tester.h"
 #include "../drivers/filesystem/fat16.h" // Needed for LS
 
+int spawn_process(char* filename); // Defined in kernel_syscalls.c
+
 /* Forward Declarations */
 void draw_interface();
 void draw_wallpaper();
@@ -100,14 +102,13 @@ void process_command(char* cmd) {
     // ls
     else if (cmd[0] == 'l' && cmd[1] == 's') {
         term_print("Listing files (console)...");
-        // fat16_list_directory prints to kprint (kernel log).
-        // We can't easily redirect kprint to this buffer without changing kprint.
-        // For now, let's just say "Check kernel log".
-        // Or we rely on the fact that kprint writes to screen?
-        // kprint writes to the global cursor. Terminal window is separate.
-        // Let's just print a dummy list for UI demo.
-        term_print("  KERNEL  BIN");
-        term_print("  CONFIG  SYS");
+        fat16_list_directory(); // Prints to kprint
+        term_print("Check debug log.");
+    }
+    // tasm
+    else if (cmd[0] == 't' && cmd[1] == 'a' && cmd[2] == 's' && cmd[3] == 'm') {
+        term_print("Running TASM...");
+        spawn_process("TASM.TEXF");
     }
     else {
         term_print("Unknown command.");
@@ -130,6 +131,9 @@ void kernel_main(void) {
     // 4. Input & Multitasking
     init_mouse();
     init_scheduler();
+
+    // Init FAT16
+    init_fat16();
 
     __asm__ volatile("sti");
 
