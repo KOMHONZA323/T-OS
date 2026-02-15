@@ -69,7 +69,9 @@ void delay(int count) {
     // The exact duration depends on the CPU speed.
     // Since we are running in QEMU, this is purely visual.
     volatile int i;
-    for (i = 0; i < count * 10000; i++) {
+    // Reduced multiplier significantly as QEMU/modern CPUs are fast
+    // but the previous count was causing apparent hangs.
+    for (i = 0; i < count * 1000; i++) {
         __asm__("nop");
     }
 }
