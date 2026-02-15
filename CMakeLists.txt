@@ -112,8 +112,9 @@ add_custom_target(iso ALL
 # 8. Run Target
 # Using -hda to treat image as Hard Disk for ATA driver compatibility
 # Using -vga std to ensure VBE support
+# Adding -usb -device usb-mouse to ensure mouse support
 add_custom_target(run
-    COMMAND qemu-system-i386 -hda ${OS_IMAGE} -vga std
+    COMMAND qemu-system-i386 -hda ${OS_IMAGE} -vga std -usb -device usb-mouse -serial stdio
     DEPENDS t_os
     COMMENT "Launching T-OS in QEMU"
 )
