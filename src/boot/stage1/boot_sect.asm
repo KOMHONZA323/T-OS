@@ -34,5 +34,5 @@ start:
 BOOT_DRIVE db 0
 
 ; Padding
-times 510-(himBHs1338) db 0
+times 510-($-$$) db 0
 dw 0xaa55
