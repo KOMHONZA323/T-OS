@@ -84,24 +84,74 @@ add_custom_command(OUTPUT ${KERNEL_BIN}
     COMMENT "Linking Kernel"
 )
 
-# 6. Create OS Image
-add_custom_target(t_os ALL
-    # 1. Combine Boot + Stage 2 (padded to 8192 bytes / 16 sectors)
-    # Total size: 512 + 8192 = 8704 bytes
-    COMMAND cat ${BOOT_BIN} ${STAGE2_BIN} > ${BUILD_DIR}/boot_combined.bin
-    COMMAND truncate -s 8704 ${BUILD_DIR}/boot_combined.bin
+# 6. Build TASM for T-OS
+set(SDK_DIR "${CMAKE_SOURCE_DIR}/src/sdk")
+set(TASM_SRC "${SDK_DIR}/tasm.c")
+set(STD_SRC "${SDK_DIR}/std.c")
+set(CRT0_ASM "${SDK_DIR}/crt0.asm")
+set(SYSCALLS_ASM "${SDK_DIR}/syscalls.asm")
+set(USER_LD "${SDK_DIR}/user.ld")
 
-    # 2. Append Kernel
-    COMMAND cat ${BUILD_DIR}/boot_combined.bin ${KERNEL_BIN} > ${OS_IMAGE}
+set(TASM_OBJ "${BUILD_DIR}/tasm.o")
+set(STD_OBJ "${BUILD_DIR}/std.o")
+set(CRT0_OBJ "${BUILD_DIR}/crt0.o")
+set(SYSCALLS_OBJ "${BUILD_DIR}/syscalls.o")
+set(TASM_ELF "${BUILD_DIR}/tasm.elf")
+set(TASM_BIN "${BUILD_DIR}/tasm.bin")
+set(TASM_TEXF "${BUILD_DIR}/tasm.texf")
 
-    # 3. Pad to 1.44MB (Standard Floppy Size, but treated as HDD by QEMU)
-    COMMAND truncate -s 1440k ${OS_IMAGE}
-
-    DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN}
-    COMMENT "Creating T-OS Disk Image"
+# Compile SDK Sources
+add_custom_command(OUTPUT ${TASM_OBJ}
+    COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -I${SDK_DIR} -c ${TASM_SRC} -o ${TASM_OBJ}
+    DEPENDS ${TASM_SRC}
+)
+add_custom_command(OUTPUT ${STD_OBJ}
+    COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -I${SDK_DIR} -c ${STD_SRC} -o ${STD_OBJ}
+    DEPENDS ${STD_SRC}
+)
+add_custom_command(OUTPUT ${CRT0_OBJ}
+    COMMAND nasm -f elf ${CRT0_ASM} -o ${CRT0_OBJ}
+    DEPENDS ${CRT0_ASM}
+)
+add_custom_command(OUTPUT ${SYSCALLS_OBJ}
+    COMMAND nasm -f elf ${SYSCALLS_ASM} -o ${SYSCALLS_OBJ}
+    DEPENDS ${SYSCALLS_ASM}
 )
 
-# 7. Create Bootable ISO (El Torito floppy emulation)
+# Link TASM
+add_custom_command(OUTPUT ${TASM_BIN}
+    COMMAND ld -T ${USER_LD} -o ${TASM_BIN} ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TASM_OBJ} ${STD_OBJ} --oformat binary -m elf_i386
+    DEPENDS ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TASM_OBJ} ${STD_OBJ} ${USER_LD}
+)
+
+# Add TEXF Header (Manual hex edit or helper script? Python helper)
+# We can use a simple python oneliner or reusing make_fat.py? No.
+# Let's assume tasm.bin is code.
+# Header: Magic(3)+Ver(1)+CodeOff(20)+CodeSize(?)+DataOff(0)+DataSize(0)+Entry(0)
+# Header size = 3+1+4+4+4+4+4 = 24 bytes.
+# Entry point relative to code start? _start is at 0x400000.
+# If we load at 0x400000, entry is 0.
+# We need a script to prepend header.
+add_custom_command(OUTPUT ${TASM_TEXF}
+    COMMAND python3 -c "import sys; import struct; d=open('${TASM_BIN}','rb').read(); h=struct.pack('<3sBIIIII', b'TOS', 1, 24, len(d), 0, 0, 0); open('${TASM_TEXF}','wb').write(h+d)"
+    DEPENDS ${TASM_BIN}
+)
+
+# 7. Create OS Image (FAT16)
+add_custom_target(t_os ALL
+    # 1. Combine Boot + Stage 2 (just for intermediate, make_fat handles structure)
+    COMMAND cat ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/kernel_pack.bin
+    # Wait, make_fat expects kernel_bin to contain stage2+kernel.
+    COMMAND cat ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/stage2_kernel.bin
+
+    # 2. Invoke make_fat.py
+    COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} test.asm=${SDK_DIR}/test.asm
+
+    DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} ${TASM_TEXF}
+    COMMENT "Creating T-OS Disk Image (FAT)"
+)
+
+# 8. Create Bootable ISO (El Torito floppy emulation)
 set(ISO_IMAGE "${BUILD_DIR}/t-os.iso")
 add_custom_target(iso ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${BUILD_DIR}/iso
@@ -114,17 +164,14 @@ add_custom_target(iso ALL
     WORKING_DIRECTORY ${BUILD_DIR}
 )
 
-# 8. Run Target
-# Using -hda to treat image as Hard Disk for ATA driver compatibility
-# Using -vga std to ensure VBE support
-# Adding -usb -device usb-mouse to ensure mouse support
+# 9. Run Target
 add_custom_target(run
     COMMAND qemu-system-i386 -drive file=${OS_IMAGE},format=raw -vga std -usb -device usb-tablet -serial stdio
     DEPENDS t_os
     COMMENT "Launching T-OS in QEMU"
 )
 
-# 9. Run from ISO
+# 10. Run from ISO
 add_custom_target(run_iso
     COMMAND qemu-system-i386 -cdrom ${ISO_IMAGE} -vga std
     DEPENDS iso

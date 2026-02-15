@@ -5,88 +5,131 @@
 #include "../../drivers/timer.h"
 #include "../memory/heap.h"
 #include "../../drivers/utils.h"
+#include "../task/scheduler.h"
+#include "../../drivers/filesystem/fat16.h"
+#include "../../sdk/texf.h"
 
-// Forward declarations of kernel functions
-// We can include headers, but for now let's just prototype what we need or include them.
-// screen.h -> kprint, etc.
+#define MAX_FDS 10
+
+typedef struct {
+    int active;
+    char* buffer;
+    uint32_t size;
+    uint32_t pos;
+} kernel_fd_t;
+
+kernel_fd_t fds[MAX_FDS];
+
+void init_fds() {
+    for (int i=0; i<MAX_FDS; i++) fds[i].active = 0;
+}
+
+int spawn_process(char* filename) {
+    kprint("Spawning: "); kprint(filename); kprint("\n");
+
+    char* proc_buf = (char*)malloc(65536);
+    if (!proc_buf) return -1;
+
+    int bytes_read = fat16_read_file(filename, proc_buf);
+    if (bytes_read <= 0) {
+        kprint("Error: Could not read file.\n");
+        free(proc_buf);
+        return -1;
+    }
+
+    texf_header_t* header = (texf_header_t*)proc_buf;
+    if (header->magic[0] != 'T' || header->magic[1] != 'O' || header->magic[2] != 'S') {
+        kprint("Error: Invalid Executable Format.\n");
+        free(proc_buf);
+        return -1;
+    }
+
+    void* load_addr = (void*)0x400000;
+    // Copy code
+    char* code_src = proc_buf + header->code_offset;
+    memory_copy(code_src, (char*)load_addr, header->code_size);
+
+    create_process((void (*)())load_addr);
+
+    free(proc_buf);
+    return 1;
+}
 
 void syscall_handler_c(registers_t *regs) {
     uint32_t syscall_num = regs->eax;
 
-    // Arguments in EBX, ECX, EDX, ESI, EDI
-
     switch (syscall_num) {
         case SYS_EXIT:
             kprint("Process exited.\n");
-            // For now, just hang or restart shell?
-            // In a real OS, we'd schedule the next process or kill this one.
-            // Since we don't have a full process manager with destructors yet:
             while(1);
             break;
 
         case SYS_PRINT:
-            // EBX = char* message
             kprint((char*)regs->ebx);
             break;
 
         case SYS_GET_CHAR:
-            // Return char in EAX
-            // get_char() is in keyboard.c but it blocks?
-            // The existing get_char() in kernel.c (not driver) uses a buffer.
-            // Let's assume we can call a non-blocking or blocking keyboard function.
-            // drivers/keyboard.c has keyboard_handler, but we need a consumer.
-            // Let's use the one from kernel.c? Accessing kernel globals is messy.
-            // Ideally, keyboard driver should have a 'get_key' function.
-            // For now, let's return 0 if no key, or block.
-            // Implementation detail: we need to expose a 'get_queued_key' from keyboard driver.
-            // Let's just return 0 for now to avoid linker errors, will fix in integration.
             regs->eax = 0;
             break;
 
         case SYS_CREATE_WINDOW:
-            // EBX = width, ECX = height, EDX = title
-            // Returns window ID in EAX
-            // We need to implement a window manager hook.
-            // For Stage 2, let's just print "Window Created" and return a dummy ID.
             kprint("Syscall: Create Window\n");
             regs->eax = 1;
             break;
 
         case SYS_SPAWN_PROCESS:
-            // EBX = filename
-            kprint("Syscall: Spawn Process\n");
-            regs->eax = 1;
+            regs->eax = spawn_process((char*)regs->ebx);
             break;
-
+// ... rest same as before ...
         case SYS_SLEEP:
-            // EBX = ms
-            // We need a sleep function. 'delay' in utils.c is busy wait.
-            // We can use that for now.
-             // We need to include utils.h or declare it.
-            // Let's just do a busy loop or nothing for now to satisfy the symbol.
             delay(regs->ebx);
             break;
 
-        // File I/O Extensions for T-OS Assembler
         case SYS_OPEN:
-            // EBX = filename, ECX = flags
-            kprint("Syscall: Open File "); kprint((char*)regs->ebx); kprint("\n");
-            // Mock: return 3 (stdin=0, stdout=1, stderr=2 taken?)
-            regs->eax = 3;
+            // Find free FD
+            int fd = -1;
+            for (int i=0; i<MAX_FDS; i++) {
+                if (!fds[i].active) { fd = i; break; }
+            }
+            if (fd == -1) { regs->eax = -1; break; }
+
+            fds[fd].buffer = (char*)malloc(65536);
+            if (!fds[fd].buffer) { regs->eax = -1; break; }
+
+            int sz = fat16_read_file((char*)regs->ebx, fds[fd].buffer);
+            if (sz < 0) {
+                if (regs->ecx & O_CREAT) {
+                    sz = 0; // New file
+                } else {
+                    free(fds[fd].buffer);
+                    fds[fd].active = 0;
+                    regs->eax = -1;
+                    break;
+                }
+            }
+            fds[fd].size = sz;
+            fds[fd].pos = 0;
+            fds[fd].active = 1;
+            regs->eax = fd;
             break;
 
         case SYS_READ:
-            // EBX = fd, ECX = buffer, EDX = count
-            // Mock: Read nothing.
-            regs->eax = 0;
+            if (regs->ebx < 0 || regs->ebx >= MAX_FDS || !fds[regs->ebx].active) {
+                regs->eax = -1; break;
+            }
+            kernel_fd_t* rfd = &fds[regs->ebx];
+
+            uint32_t available = rfd->size - rfd->pos;
+            uint32_t to_read = regs->edx;
+            if (to_read > available) to_read = available;
+
+            memory_copy(rfd->buffer + rfd->pos, (char*)regs->ecx, to_read);
+            rfd->pos += to_read;
+            regs->eax = to_read;
             break;
 
         case SYS_WRITE:
-            // EBX = fd, ECX = buffer, EDX = count
-            // Mock: Print to screen if fd=1
-            if (regs->ebx == 1) {
-                // kprint handles null-terminated strings, but write might not be.
-                // We should handle 'count'.
+            if (regs->ebx == 1) { // STDOUT
                 char* buf = (char*)regs->ecx;
                 uint32_t count = regs->edx;
                 for (uint32_t i = 0; i < count; i++) {
@@ -95,23 +138,37 @@ void syscall_handler_c(registers_t *regs) {
                     c[1] = 0;
                     kprint(c);
                 }
+                regs->eax = regs->edx;
+            } else {
+                if (regs->ebx < 0 || regs->ebx >= MAX_FDS || !fds[regs->ebx].active) {
+                    regs->eax = -1; break;
+                }
+                kernel_fd_t* wfd = &fds[regs->ebx];
+                if (wfd->pos + regs->edx > 65536) {
+                    regs->eax = -1; break;
+                }
+                memory_copy((char*)regs->ecx, wfd->buffer + wfd->pos, regs->edx);
+                wfd->pos += regs->edx;
+                if (wfd->pos > wfd->size) wfd->size = wfd->pos;
+                regs->eax = regs->edx;
             }
-            regs->eax = regs->edx; // Pretend we wrote all
             break;
 
         case SYS_CLOSE:
-            // EBX = fd
-            regs->eax = 0;
+            if (regs->ebx >= 0 && regs->ebx < MAX_FDS && fds[regs->ebx].active) {
+                free(fds[regs->ebx].buffer);
+                fds[regs->ebx].active = 0;
+                regs->eax = 0;
+            } else {
+                regs->eax = -1;
+            }
             break;
 
         case SYS_MALLOC:
-            // EBX = size
-            // Use kernel heap. Note: Using kernel heap for user process is insecure but standard for single-address-space hobby OS.
             regs->eax = (uint32_t)malloc(regs->ebx);
             break;
 
         case SYS_FREE:
-            // EBX = ptr
             free((void*)regs->ebx);
             break;
 
