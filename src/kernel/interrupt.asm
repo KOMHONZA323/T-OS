@@ -405,3 +405,29 @@ irq15:
     push byte 15
     push byte 47
     jmp irq_common_stub
+
+; SYSCALL (INT 0x80)
+global isr128
+isr128:
+    cli
+    pusha           ; Pushes edi,esi,ebp,esp,ebx,edx,ecx,eax
+    mov ax, ds      ; Lower 16-bits of eax = ds.
+    push eax        ; save the data segment descriptor
+    mov ax, 0x10    ; load the kernel data segment descriptor
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    ; We need to call syscall_handler_c which we'll define
+    extern syscall_handler_c
+    call syscall_handler_c
+
+    pop eax         ; reload the original data segment descriptor
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    popa            ; Pops edi,esi,ebp,esp,ebx,edx,ecx,eax
+    sti
+    iret
