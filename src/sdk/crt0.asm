@@ -5,9 +5,10 @@ extern exit
 
 section .text
 _start:
-    ; Setup stack?
-    ; The loader should have set up ESP.
-    ; If not, we might need to, but for now assume loader does it.
+    ; Setup stack args for main(int argc, char** argv)
+    ; Since kernel doesn't pass args yet, we push defaults.
+    push 0          ; argv = NULL
+    push 0          ; argc = 0
 
     call main
 

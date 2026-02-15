@@ -26,6 +26,9 @@ typedef struct {
 
 kernel_fd_t fds[MAX_FDS];
 
+// Global flag to control input focus (defined in kernel.c)
+extern int user_process_active;
+
 void init_fds() {
     for (int i=0; i<MAX_FDS; i++) fds[i].active = 0;
 }
@@ -51,11 +54,13 @@ int spawn_process(char* filename) {
     }
 
     void* load_addr = (void*)0x400000;
-    // Copy code
     char* code_src = proc_buf + header->code_offset;
     memory_copy(code_src, (char*)load_addr, header->code_size);
 
     create_process((void (*)())load_addr);
+
+    // Give focus to user process
+    user_process_active = 1;
 
     free(proc_buf);
     return 1;
@@ -67,7 +72,15 @@ void syscall_handler_c(registers_t *regs) {
     switch (syscall_num) {
         case SYS_EXIT:
             kprint("Process exited.\n");
-            while(1);
+            user_process_active = 0; // Return focus to kernel
+            // Kill task logic missing, so just loop or yield?
+            // create_process doesn't support killing yet.
+            // But yielding focus allows kernel shell to resume.
+            // The user task will continue running "exit" loop in crt0 or here?
+            // If we return, user code continues.  syscall usually doesn't return.
+            // We should deschedule.
+            // For now, busy wait loop in syscall is safer than returning to dead code.
+            while(1) { __asm__ volatile("hlt"); }
             break;
 
         case SYS_PRINT:
@@ -75,7 +88,8 @@ void syscall_handler_c(registers_t *regs) {
             break;
 
         case SYS_GET_CHAR:
-            regs->eax = 0;
+            // Call driver directly
+            regs->eax = (uint32_t)get_char();
             break;
 
         case SYS_CREATE_WINDOW:
@@ -86,7 +100,7 @@ void syscall_handler_c(registers_t *regs) {
         case SYS_SPAWN_PROCESS:
             regs->eax = spawn_process((char*)regs->ebx);
             break;
-// ... rest same as before ...
+
         case SYS_SLEEP:
             delay(regs->ebx);
             break;
