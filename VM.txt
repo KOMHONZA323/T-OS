@@ -1,41 +1,10 @@
-Configuration Guide for T-OS Virtual Machine
+OS: T-OS
+RAM: 128MB
+VRAM: 16MB
+Video Controller: VBoxSVGA / Standard VGA
+Chipset: PIIX3
+Mouse: PS/2 or USB Tablet
+Keyboard: PS/2
 
-To ensure proper graphics (VBE LFB) and performance (FPS Limiter, VSync) in VirtualBox or QEMU, follow these settings:
-
-=== VirtualBox ===
-1. Create a New Machine:
-   - Type: Other
-   - Version: Other/Unknown (32-bit)
-
-2. System > Motherboard:
-   - Base Memory: 128 MB (Required for high-res back buffers)
-   - Chipset: PIIX3
-   - Pointing Device: PS/2 Mouse
-   - Enable I/O APIC: Recommended
-
-3. Display > Screen:
-   - Video Memory: 128 MB (Drag slider to max)
-   - Graphics Controller: VBoxSVGA (Best compatibility for VBE) or VMSVGA
-   - Enable 3D Acceleration: OFF (Usually better for raw VBE)
-
-4. Storage:
-   - Controller: IDE
-   - Type: PIIX4
-   - Add Hard Disk: Select 't-os.bin' (treated as raw HDD image)
-
-=== QEMU (Command Line) ===
-Run with the following flags:
-  qemu-system-i386 \
-    -m 128 \
-    -hda t-os.bin \
-    -vga std \
-    -monitor stdio
-
-- `-m 128`: Allocate 128MB RAM (prevents back buffer allocation failure).
-- `-vga std`: Use standard VGA card with VBE 3.0 support.
-- `-hda`: Treat image as Hard Disk (for persistence).
-
-=== Troubleshooting ===
-- If screen is black: Ensure Video Memory is > 32MB.
-- If artifacts appear: Try changing Resolution to "Auto" in boot menu.
-- If mouse lags: Ensure PS/2 Mouse is selected.
+QEMU Recommended Flags:
+-m 128 -vga std -usb -device usb-mouse -serial stdio -enable-kvm

@@ -149,9 +149,9 @@ void kernel_main(void) {
     while (1) {
         uint32_t start_tick = get_tick_count();
 
-        // Handle Input
-        char c = get_char();
-        if (c) {
+        // Handle Input - Drain Buffer
+        char c;
+        while ((c = get_char())) {
             // Check for toggle keys first
             if (c == 's') { // Still use 's' for settings? Conflicts with terminal typing.
                 // Let's move global hotkeys to function keys or something less intrusive?
