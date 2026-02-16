@@ -116,9 +116,9 @@ add_custom_command(OUTPUT ${TASM_TEXF}
 
 add_custom_target(t_os ALL
     COMMAND cat ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/stage2_kernel.bin
-    COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} test.asm=${SDK_DIR}/test.asm test.txt=${SDK_DIR}/test.txt
+    COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} tgc.texf=${TGC_TEXF} test.asm=${SDK_DIR}/test.asm test.txt=${SDK_DIR}/test.txt
     COMMAND ls -l ${OS_IMAGE}
-    DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} ${TASM_TEXF}
+    DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} ${TASM_TEXF} ${TGC_TEXF}
     COMMENT "Creating T-OS Disk Image (FAT)"
 )
 
@@ -145,3 +145,29 @@ add_custom_target(run_iso
     DEPENDS iso
     COMMENT "Launching T-OS from ISO in QEMU"
 )
+
+# Build TGC
+set(TGC_SRC "${SDK_DIR}/tgc.c")
+set(TGC_OBJ "${BUILD_DIR}/tgc.o")
+set(TGC_BIN "${BUILD_DIR}/tgc.bin")
+set(TGC_TEXF "${BUILD_DIR}/tgc.texf")
+
+add_custom_command(OUTPUT ${TGC_OBJ}
+    COMMAND gcc -ffreestanding -m32 -g -fno-pie -fno-pic -I${SDK_DIR} -c ${TGC_SRC} -o ${TGC_OBJ}
+    DEPENDS ${TGC_SRC} ${TASM_SRC}
+)
+
+add_custom_command(OUTPUT ${TGC_BIN}
+    COMMAND ld -T ${USER_LD} -o ${TGC_BIN} ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TGC_OBJ} ${STD_OBJ} --oformat binary -m elf_i386
+    DEPENDS ${CRT0_OBJ} ${SYSCALLS_OBJ} ${TGC_OBJ} ${STD_OBJ} ${USER_LD}
+)
+
+add_custom_command(OUTPUT ${TGC_TEXF}
+    COMMAND python3 ${SDK_DIR}/make_texf.py ${TGC_BIN} ${TGC_TEXF}
+    DEPENDS ${TGC_BIN}
+)
+
+# Update OS Image target (Search and Replace)
+# I need to append tgc.texf=${TGC_TEXF} to make_fat args.
+# Since I am appending to file, I can't easily modify the existing 'add_custom_target(t_os ...)' block.
+# I will use 'replace_with_git_merge_diff' to update the target.
