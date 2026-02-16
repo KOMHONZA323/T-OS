@@ -58,26 +58,21 @@ void init_fat16() {
 
     // Check for VBR signature (Superfloppy)
     // 0xEB/0xE9 at offset 0 (JMP) AND 0x29 at offset 38 (Extended Boot Sig)
-    // Actually, offset 38 is 0x29 for FAT12/16.
     if ((buffer[0] == 0xEB || buffer[0] == 0xE9) && buffer[38] == 0x29) {
         // Superfloppy
         partition_lba_start = 0;
-        // kprint("Mounting as Superfloppy (FAT16).\n");
     } else {
         // Assume MBR
         uint8_t* p1 = &buffer[446];
         partition_lba_start = *(uint32_t*)&p1[8];
         partition_sectors = *(uint32_t*)&p1[12];
-        // kprint("Mounting from Partition 1.\n");
 
         if (partition_lba_start == 0) {
-             // Fallback if MBR looks empty but we have signature
-             // Check if it looks like BPB anyway?
              if (buffer[38] == 0x29) partition_lba_start = 0;
         }
     }
 
-    // Read Boot Sector (if MBR, read partition start; if Superfloppy, read 0 again)
+    // Read Boot Sector
     if (!ata_read_sector(partition_lba_start, buffer)) {
         kprint("Disk Error: Failed to read Boot Sector.\n");
         fs_ready = 0;
@@ -100,12 +95,10 @@ void init_fat16() {
     fs_ready = 1;
 }
 
-// Convert Cluster to LBA
 uint32_t cluster_to_lba(uint16_t cluster) {
     return data_start_lba + ((cluster - 2) * sectors_per_cluster);
 }
 
-// Read FAT Entry
 uint16_t read_fat_entry(uint16_t cluster) {
     uint32_t fat_offset = cluster * 2;
     uint32_t fat_sector = fat_start_lba + (fat_offset / bytes_per_sector);
@@ -247,7 +240,6 @@ int fat16_create_file(const char* filename) {
     return 0;
 }
 
-// Helper to convert FAT 8.3 to string "NAME.EXT"
 void fat_to_string(char* name83, char* out) {
     int k = 0;
     for (int l = 0; l < 8 && name83[l] != ' '; l++) out[k++] = name83[l];
@@ -258,7 +250,6 @@ void fat_to_string(char* name83, char* out) {
     out[k] = 0;
 }
 
-// Case insensitive prefix check
 int starts_with_ignore_case(char* str, char* prefix) {
     while (*prefix) {
         char c1 = *str;
@@ -287,18 +278,9 @@ int fat16_find_file(char* partial, char* output) {
             if (entries[j].attr & 0x0F) continue;
 
             char fname[13];
-            // Reconstruct name from 8.3 entry
-            // Need to combine Name (8) and Ext (3) which are adjacent in struct?
-            // Struct: uint8_t name[8]; uint8_t ext[3];
-            // In memory they are contiguous 11 bytes.
-            // My struct definition has them separate.
-            // fat_to_string expects 11 bytes.
-            // I can pass entries[j].name assuming packing.
             fat_to_string((char*)entries[j].name, fname);
 
             if (starts_with_ignore_case(fname, partial)) {
-                // Found match!
-                // Copy to output
                 int m=0;
                 while (fname[m]) { output[m] = fname[m]; m++; }
                 output[m] = 0;
@@ -316,28 +298,6 @@ void fat16_list_matches(char* partial) {
     uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
 
     int matches_found = 0;
-
-    // We can't print directly to terminal from driver easily unless we use kprint.
-    // kprint goes to screen. Terminal history is in kernel.c.
-    // If we kprint, it might overlay on GUI.
-    // But  uses kprint.
-    // So CMakeLists.txt
-README.md
-VM.txt
-src
-temp_boot.asm output goes to debug log / screen overlay?
-    // The user sees CMakeLists.txt
-README.md
-VM.txt
-src
-temp_boot.asm output?
-    // User said "ls doesnt work". I fixed it.
-    // If CMakeLists.txt
-README.md
-VM.txt
-src
-temp_boot.asm works, it means  works.
-    // So I will use .
 
     for (uint32_t i = 0; i < root_sectors; i++) {
         if (!ata_read_sector(root_dir_start_lba + i, sector)) return;
