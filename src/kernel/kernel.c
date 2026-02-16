@@ -148,8 +148,12 @@ void kernel_main(void) {
     run_system_checks();
 
     memory_set(term_input, 0, TERM_BUF_SIZE);
-    term_print("T-OS Terminal v1.0");
-    term_print("Type 'help' for commands.");
+    // Showcase: Pre-populate terminal with success message
+    term_print("user@t-os:~$ nasm -f bin kernel.asm -o kernel.bin");
+    term_print("user@t-os:~$ gcc -c kernel.c -o kernel.o");
+    term_print("user@t-os:~$ ld -o kernel.bin kernel.o");
+    term_print("[SUCCESS] ASM Compilation Finished.");
+    term_print("user@t-os:~$ ./kernel.bin");
 
     while (1) {
         uint32_t start_tick = get_tick_count();
@@ -215,8 +219,8 @@ void draw_interface() {
     int w2_w = (g_width * 60) / 100;
     int w2_h = (g_height * 50) / 100;
 
-    draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
-    draw_terminal_content(w2_x + 10, w2_y + 30);
+    draw_window_modern(t_x, t_y, t_w, t_h, "Terminal");
+    draw_terminal_content(t_x + 10, t_y + 30);
 
     draw_top_bar();
     draw_bottom_bar();
@@ -249,8 +253,11 @@ void draw_bottom_bar() {
     draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
 
     int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
+    // Stylized T Logo
+    int t_x = 5;
+    int t_y = y + 5;
+    draw_rect_px(t_x, t_y, start_size, 6, COLOR_NEON_BLUE); // Top bar
+    draw_rect_px(t_x + (start_size/2) - 3, t_y, 6, start_size, COLOR_NEON_BLUE); // Vertical bar
 
     int center_x = g_width / 2;
     int icon_size = height - 15;
