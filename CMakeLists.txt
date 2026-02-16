@@ -116,7 +116,7 @@ add_custom_command(OUTPUT ${TASM_TEXF}
 
 add_custom_target(t_os ALL
     COMMAND cat ${STAGE2_BIN} ${KERNEL_BIN} > ${BUILD_DIR}/stage2_kernel.bin
-    COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} test.asm=${SDK_DIR}/test.asm
+    COMMAND python3 ${SDK_DIR}/make_fat.py ${BOOT_BIN} ${BUILD_DIR}/stage2_kernel.bin ${OS_IMAGE} tasm.texf=${TASM_TEXF} test.asm=${SDK_DIR}/test.asm test.txt=${SDK_DIR}/test.txt
     COMMAND ls -l ${OS_IMAGE}
     DEPENDS ${BOOT_BIN} ${STAGE2_BIN} ${KERNEL_BIN} ${TASM_TEXF}
     COMMENT "Creating T-OS Disk Image (FAT)"
