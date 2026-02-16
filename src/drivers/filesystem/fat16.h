@@ -9,3 +9,4 @@ int fat16_create_file(const char* filename);
 void fat16_list_directory();
 
 #endif
+int fat16_find_file(char* partial, char* output);

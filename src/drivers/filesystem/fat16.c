@@ -246,3 +246,65 @@ int fat16_create_file(const char* filename) {
     }
     return 0;
 }
+
+// Helper to convert FAT 8.3 to string "NAME.EXT"
+void fat_to_string(char* name83, char* out) {
+    int k = 0;
+    for (int l = 0; l < 8 && name83[l] != ' '; l++) out[k++] = name83[l];
+    if (name83[8] != ' ') {
+        out[k++] = '.';
+        for (int l = 8; l < 11 && name83[l] != ' '; l++) out[k++] = name83[l];
+    }
+    out[k] = 0;
+}
+
+// Case insensitive prefix check
+int starts_with_ignore_case(char* str, char* prefix) {
+    while (*prefix) {
+        char c1 = *str;
+        char c2 = *prefix;
+        if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+        if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+        if (c1 != c2) return 0;
+        str++;
+        prefix++;
+    }
+    return 1;
+}
+
+int fat16_find_file(char* partial, char* output) {
+    if (!fs_ready) return 0;
+
+    uint8_t sector[512];
+    uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
+
+    for (uint32_t i = 0; i < root_sectors; i++) {
+        if (!ata_read_sector(root_dir_start_lba + i, sector)) return 0;
+        FatEntry* entries = (FatEntry*)sector;
+        for (int j = 0; j < bytes_per_sector / 32; j++) {
+            if (entries[j].name[0] == 0) return 0;
+            if (entries[j].name[0] == 0xE5) continue;
+            if (entries[j].attr & 0x0F) continue;
+
+            char fname[13];
+            // Reconstruct name from 8.3 entry
+            // Need to combine Name (8) and Ext (3) which are adjacent in struct?
+            // Struct: uint8_t name[8]; uint8_t ext[3];
+            // In memory they are contiguous 11 bytes.
+            // My struct definition has them separate.
+            // fat_to_string expects 11 bytes.
+            // I can pass entries[j].name assuming packing.
+            fat_to_string((char*)entries[j].name, fname);
+
+            if (starts_with_ignore_case(fname, partial)) {
+                // Found match!
+                // Copy to output
+                int m=0;
+                while (fname[m]) { output[m] = fname[m]; m++; }
+                output[m] = 0;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
