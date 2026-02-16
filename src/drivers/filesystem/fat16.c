@@ -308,3 +308,54 @@ int fat16_find_file(char* partial, char* output) {
     }
     return 0;
 }
+
+void fat16_list_matches(char* partial) {
+    if (!fs_ready) return;
+
+    uint8_t sector[512];
+    uint32_t root_sectors = (root_entries * 32 + bytes_per_sector - 1) / bytes_per_sector;
+
+    int matches_found = 0;
+
+    // We can't print directly to terminal from driver easily unless we use kprint.
+    // kprint goes to screen. Terminal history is in kernel.c.
+    // If we kprint, it might overlay on GUI.
+    // But  uses kprint.
+    // So CMakeLists.txt
+README.md
+VM.txt
+src
+temp_boot.asm output goes to debug log / screen overlay?
+    // The user sees CMakeLists.txt
+README.md
+VM.txt
+src
+temp_boot.asm output?
+    // User said "ls doesnt work". I fixed it.
+    // If CMakeLists.txt
+README.md
+VM.txt
+src
+temp_boot.asm works, it means  works.
+    // So I will use .
+
+    for (uint32_t i = 0; i < root_sectors; i++) {
+        if (!ata_read_sector(root_dir_start_lba + i, sector)) return;
+        FatEntry* entries = (FatEntry*)sector;
+        for (int j = 0; j < bytes_per_sector / 32; j++) {
+            if (entries[j].name[0] == 0) return;
+            if (entries[j].name[0] == 0xE5) continue;
+            if (entries[j].attr & 0x0F) continue;
+
+            char fname[13];
+            fat_to_string((char*)entries[j].name, fname);
+
+            if (starts_with_ignore_case(fname, partial)) {
+                kprint(fname);
+                kprint(" ");
+                matches_found++;
+            }
+        }
+    }
+    if (matches_found > 0) kprint("\n");
+}

@@ -20,6 +20,7 @@ int spawn_process(char* filename);
 
 // Global flag to indicate if a user process is active and should receive input
 int user_process_active = 0;
+int tab_count = 0;
 
 void draw_interface();
 void draw_wallpaper();
@@ -63,10 +64,10 @@ void term_print(const char* msg) {
     }
 }
 
-void autocomplete() {
-    if (term_idx == 0) return;
+// In fat16.c
+void fat16_list_matches(char* partial);
 
-    // Check if input has space (autocomplete argument)
+void autocomplete_list() {
     int space_idx = -1;
     for (int i=term_idx-1; i>=0; i--) {
         if (term_input[i] == ' ') {
@@ -76,15 +77,34 @@ void autocomplete() {
     }
 
     if (space_idx != -1) {
-        // Complete Argument (File)
+        // List matching files
         char* partial = term_input + space_idx + 1;
-        if (strlen(partial) == 0) return; // Nothing to complete yet
+        fat16_list_matches(partial);
+    } else {
+        // List matching commands
+        for (int i = 0; COMMANDS[i] != 0; i++) {
+            term_print(COMMANDS[i]);
+        }
+    }
+}
+
+void autocomplete() {
+    if (term_idx == 0) return;
+
+    int space_idx = -1;
+    for (int i=term_idx-1; i>=0; i--) {
+        if (term_input[i] == ' ') {
+            space_idx = i;
+            break;
+        }
+    }
+
+    if (space_idx != -1) {
+        char* partial = term_input + space_idx + 1;
+        // if (strlen(partial) == 0) return; // Allow empty
 
         char found_name[32];
         if (fat16_find_file(partial, found_name)) {
-            // Append found name
-            // We replace partial with found_name
-            // term_input[space_idx+1] start
             int found_len = strlen(found_name);
             int base_len = space_idx + 1;
 
@@ -97,9 +117,7 @@ void autocomplete() {
         return;
     }
 
-    // Find matching command
     for (int i = 0; COMMANDS[i] != 0; i++) {
-        // Check if COMMANDS[i] starts with term_input
         int match = 1;
         for (int j = 0; j < term_idx; j++) {
             if (COMMANDS[i][j] != term_input[j]) {
@@ -109,14 +127,12 @@ void autocomplete() {
         }
 
         if (match) {
-            // Found match! Complete it.
-            // Copy COMMANDS[i] to term_input
             int len = strlen((char*)COMMANDS[i]);
             if (len >= TERM_BUF_SIZE) len = TERM_BUF_SIZE - 1;
             memory_copy((char*)COMMANDS[i], term_input, len);
             term_input[len] = 0;
             term_idx = len;
-            return; // Stop at first match
+            return;
         }
     }
 }
@@ -193,20 +209,29 @@ void kernel_main(void) {
             char c;
             while ((c = get_char())) {
                 if (c == '\t') { // TAB
-                    autocomplete();
-                } else if (c == '\b') {
-                    if (term_idx > 0) {
-                        term_input[--term_idx] = 0;
+                    tab_count++;
+                    if (tab_count >= 3) {
+                        autocomplete_list();
+                        tab_count = 0; // Reset?
+                    } else {
+                        autocomplete();
                     }
-                } else if (c == '\n') {
-                    process_command(term_input);
-                    term_idx = 0;
-                    memory_set(term_input, 0, TERM_BUF_SIZE);
                 } else {
-                    // Filter printable chars only
-                    if (term_idx < TERM_BUF_SIZE - 1 && c >= 32 && c <= 126) {
-                        term_input[term_idx++] = c;
-                        term_input[term_idx] = 0;
+                    tab_count = 0; // Reset count on any other key
+
+                    if (c == '\b') {
+                        if (term_idx > 0) {
+                            term_input[--term_idx] = 0;
+                        }
+                    } else if (c == '\n') {
+                        process_command(term_input);
+                        term_idx = 0;
+                        memory_set(term_input, 0, TERM_BUF_SIZE);
+                    } else {
+                        if (term_idx < TERM_BUF_SIZE - 1 && c >= 32 && c <= 126) {
+                            term_input[term_idx++] = c;
+                            term_input[term_idx] = 0;
+                        }
                     }
                 }
             }
