@@ -55,6 +55,10 @@ int spawn_process(char* filename) {
 
     void* load_addr = (void*)0x400000;
     char* code_src = proc_buf + header->code_offset;
+
+    // Zero out BSS/Data area (1MB) to ensure global variables are initialized to 0
+    memory_set((char*)load_addr, 0, 1024 * 1024);
+
     memory_copy(code_src, (char*)load_addr, header->code_size);
 
     create_process((void (*)())load_addr);
