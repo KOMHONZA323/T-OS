@@ -125,6 +125,11 @@ void process_command(char* cmd) {
         swap_buffers();
         spawn_process("TASM.TEXF");
     }
+    else if (cmd[0] == 't' && cmd[1] == 'g' && cmd[2] == 'c') {
+        term_print("Running TGC...");
+        swap_buffers();
+        spawn_process("TGC.TEXF");
+    }
     else {
         term_print("Unknown command.");
     }
@@ -168,7 +173,8 @@ void kernel_main(void) {
                     term_idx = 0;
                     memory_set(term_input, 0, TERM_BUF_SIZE);
                 } else {
-                    if (term_idx < TERM_BUF_SIZE - 1 if (term_idx < TERM_BUF_SIZE - 1) {if (term_idx < TERM_BUF_SIZE - 1) { c >= 32 if (term_idx < TERM_BUF_SIZE - 1) {if (term_idx < TERM_BUF_SIZE - 1) { c <= 126) {
+                    // Filter printable chars only
+                    if (term_idx < TERM_BUF_SIZE - 1 && c >= 32 && c <= 126) {
                         term_input[term_idx++] = c;
                         term_input[term_idx] = 0;
                     }
