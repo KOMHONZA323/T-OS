@@ -1,0 +1,87 @@
+<<<<<<< SEARCH
+void autocomplete() {
+    if (term_idx == 0) return;
+
+    // Find matching command
+    for (int i = 0; COMMANDS[i] != 0; i++) {
+        // Check if COMMANDS[i] starts with term_input
+        // Manual strncmp
+        int match = 1;
+        for (int j = 0; j < term_idx; j++) {
+            if (COMMANDS[i][j] != term_input[j]) {
+                match = 0;
+                break;
+            }
+        }
+
+        if (match) {
+            // Found match! Complete it.
+            // Copy COMMANDS[i] to term_input
+            int len = strlen((char*)COMMANDS[i]);
+            if (len >= TERM_BUF_SIZE) len = TERM_BUF_SIZE - 1;
+            memory_copy((char*)COMMANDS[i], term_input, len);
+            term_input[len] = 0;
+            term_idx = len;
+            return; // Stop at first match
+        }
+    }
+}
+=======
+void autocomplete() {
+    if (term_idx == 0) return;
+
+    // Check if input has space (autocomplete argument)
+    int space_idx = -1;
+    for (int i=term_idx-1; i>=0; i--) {
+        if (term_input[i] == ' ') {
+            space_idx = i;
+            break;
+        }
+    }
+
+    if (space_idx != -1) {
+        // Complete Argument (File)
+        char* partial = term_input + space_idx + 1;
+        if (strlen(partial) == 0) return; // Nothing to complete yet
+
+        char found_name[32];
+        if (fat16_find_file(partial, found_name)) {
+            // Append found name
+            // We replace partial with found_name
+            // term_input[space_idx+1] start
+            int found_len = strlen(found_name);
+            int base_len = space_idx + 1;
+
+            if (base_len + found_len < TERM_BUF_SIZE) {
+                memory_copy(found_name, term_input + base_len, found_len);
+                term_input[base_len + found_len] = 0;
+                term_idx = base_len + found_len;
+            }
+        }
+        return;
+    }
+
+    // Find matching command
+    for (int i = 0; COMMANDS[i] != 0; i++) {
+        // Check if COMMANDS[i] starts with term_input
+        int match = 1;
+        for (int j = 0; j < term_idx; j++) {
+            if (COMMANDS[i][j] != term_input[j]) {
+                match = 0;
+                break;
+            }
+        }
+
+        if (match) {
+            // Found match! Complete it.
+            // Copy COMMANDS[i] to term_input
+            int len = strlen((char*)COMMANDS[i]);
+            if (len >= TERM_BUF_SIZE) len = TERM_BUF_SIZE - 1;
+            memory_copy((char*)COMMANDS[i], term_input, len);
+            term_input[len] = 0;
+            term_idx = len;
+            return; // Stop at first match
+        }
+    }
+}
+>>>>>>> REPLACE
