@@ -43,6 +43,8 @@ int term_idx = 0;
 char term_history[10][64];
 int term_hist_count = 0;
 
+const char* COMMANDS[] = { "help", "cls", "shutdown", "reboot", "ls", "tasm", 0 };
+
 void term_print(const char* msg) {
     if (term_hist_count < 10) {
         int len = strlen((char*)msg);
@@ -58,6 +60,34 @@ void term_print(const char* msg) {
         if (len > 63) len = 63;
         memory_copy((char*)msg, term_history[9], len);
         term_history[9][len] = 0;
+    }
+}
+
+void autocomplete() {
+    if (term_idx == 0) return;
+
+    // Find matching command
+    for (int i = 0; COMMANDS[i] != 0; i++) {
+        // Check if COMMANDS[i] starts with term_input
+        // Manual strncmp
+        int match = 1;
+        for (int j = 0; j < term_idx; j++) {
+            if (COMMANDS[i][j] != term_input[j]) {
+                match = 0;
+                break;
+            }
+        }
+
+        if (match) {
+            // Found match! Complete it.
+            // Copy COMMANDS[i] to term_input
+            int len = strlen((char*)COMMANDS[i]);
+            if (len >= TERM_BUF_SIZE) len = TERM_BUF_SIZE - 1;
+            memory_copy((char*)COMMANDS[i], term_input, len);
+            term_input[len] = 0;
+            term_idx = len;
+            return; // Stop at first match
+        }
     }
 }
 
@@ -131,7 +161,9 @@ void kernel_main(void) {
         if (!user_process_active) {
             char c;
             while ((c = get_char())) {
-                if (c == '\b') {
+                if (c == '\t') { // TAB
+                    autocomplete();
+                } else if (c == '\b') {
                     if (term_idx > 0) {
                         term_input[--term_idx] = 0;
                     }
@@ -182,29 +214,10 @@ void kernel_main(void) {
 
 void draw_interface() {
     draw_wallpaper();
-
-    // C Code Editor Window
-    int c_x = 100;
-    int c_y = 100;
-    int c_w = 400;
-    int c_h = 300;
-    if (g_width > 1200) { c_x = 200; c_y = 200; c_w = 600; c_h = 400; }
-
-    draw_window_modern(c_x, c_y, c_w, c_h, "code.c - C Editor");
-    draw_c_code_content(c_x + 10, c_y + 30);
-
-    // Terminal Window
-    int t_x = c_x + c_w + 50;
-    int t_y = c_y + 50;
-    int t_w = c_w;
-    int t_h = c_h;
-
-    // Ensure it fits
-    if (t_x + t_w > g_width) {
-        // Stack or overlap if screen too small
-        t_x = c_x + 50;
-        t_y = c_y + 50;
-    }
+    int w2_x = (g_width * 20) / 100;
+    int w2_y = (g_height * 20) / 100;
+    int w2_w = (g_width * 60) / 100;
+    int w2_h = (g_height * 50) / 100;
 
     draw_window_modern(t_x, t_y, t_w, t_h, "Terminal");
     draw_terminal_content(t_x + 10, t_y + 30);
@@ -249,31 +262,23 @@ void draw_bottom_bar() {
     int center_x = g_width / 2;
     int icon_size = height - 15;
     int icon_spacing = icon_size + 10;
-    // Glowing Blue App Icons
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, COLOR_NEON_BLUE);
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, COLOR_NEON_BLUE);
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, COLOR_NEON_BLUE);
+    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
+    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
 
-    // Show Desktop Sliver
-    draw_rect_px(g_width - 5, y, 5, height, 0x80FFFFFF);
+    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
+    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
+
+    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
+    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
 }
 
 void draw_wallpaper() {
-    // Deep Charcoal & Obsidian Base
     draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
-
-    // Abstract Geometric Shapes (Charcoal)
     draw_line(0, g_height, g_width, 0, COLOR_CHARCOAL);
     draw_line(0, 0, g_width, g_height, COLOR_CHARCOAL);
-    draw_rect_alpha(100, 100, 300, 800, 0x201E1E1E); // Vertical strip
-    draw_rect_alpha(g_width - 400, 0, 200, g_height, 0x201E1E1E);
-
-    // Subtle Neon Blue Accents (Alpha blended)
-    draw_line(0, g_height/2, g_width, g_height/2, 0x4000E5FF); // Horizon line
-    draw_line(g_width/3, 0, g_width/3, g_height, 0x2000E5FF);
-    draw_line(g_width*2/3, 0, g_width*2/3, g_height, 0x2000E5FF);
-
-    draw_rect_alpha(g_width/2 - 100, g_height/2 - 100, 200, 200, 0x1000E5FF); // Central glow
+    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x1000E5FF);
+    draw_circle(g_width/2, g_height/2, g_height/3, 0x101E1E1E, 0);
 }
 
 void draw_top_bar() {
@@ -289,27 +294,9 @@ void draw_top_bar() {
     int time_width = strlen(time) * 8;
     draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
-    // System Tray Icons
-    int icon_y = (height - 12) / 2;
-    int tray_x = g_width - 100;
-
-    // WiFi (Signal Bars)
-    draw_rect_px(tray_x, icon_y + 9, 3, 3, COLOR_WHITE);
-    draw_rect_px(tray_x + 5, icon_y + 6, 3, 6, COLOR_WHITE);
-    draw_rect_px(tray_x + 10, icon_y + 3, 3, 9, COLOR_WHITE);
-    draw_rect_px(tray_x + 15, icon_y, 3, 12, COLOR_WHITE);
-
-    // Battery
-    tray_x += 30;
-    draw_rect_px(tray_x, icon_y + 2, 20, 10, COLOR_WHITE); // Body
-    draw_rect_px(tray_x + 1, icon_y + 3, 12, 8, COLOR_GREEN); // Level
-    draw_rect_px(tray_x + 20, icon_y + 5, 2, 4, COLOR_WHITE); // Tip
-
-    // Power
-    tray_x += 35;
-    draw_circle(tray_x + 6, icon_y + 6, 5, COLOR_WHITE, 0); // Circle outline
-    draw_rect_px(tray_x + 5, icon_y, 2, 6, COLOR_TOP_BAR_BG); // Cut top (Darkens)
-    draw_rect_px(tray_x + 5, icon_y, 2, 4, COLOR_WHITE); // Line
+    char* tray = "WF BT PWR";
+    int tray_width = strlen(tray) * 8;
+    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
