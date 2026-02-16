@@ -10,3 +10,4 @@ void fat16_list_directory();
 
 #endif
 int fat16_find_file(char* partial, char* output);
+void fat16_list_matches(char* partial);
