@@ -43,6 +43,8 @@ int term_idx = 0;
 char term_history[10][64];
 int term_hist_count = 0;
 
+const char* COMMANDS[] = { "help", "cls", "shutdown", "reboot", "ls", "tasm", 0 };
+
 void term_print(const char* msg) {
     if (term_hist_count < 10) {
         int len = strlen((char*)msg);
@@ -58,6 +60,34 @@ void term_print(const char* msg) {
         if (len > 63) len = 63;
         memory_copy((char*)msg, term_history[9], len);
         term_history[9][len] = 0;
+    }
+}
+
+void autocomplete() {
+    if (term_idx == 0) return;
+
+    // Find matching command
+    for (int i = 0; COMMANDS[i] != 0; i++) {
+        // Check if COMMANDS[i] starts with term_input
+        // Manual strncmp
+        int match = 1;
+        for (int j = 0; j < term_idx; j++) {
+            if (COMMANDS[i][j] != term_input[j]) {
+                match = 0;
+                break;
+            }
+        }
+
+        if (match) {
+            // Found match! Complete it.
+            // Copy COMMANDS[i] to term_input
+            int len = strlen((char*)COMMANDS[i]);
+            if (len >= TERM_BUF_SIZE) len = TERM_BUF_SIZE - 1;
+            memory_copy((char*)COMMANDS[i], term_input, len);
+            term_input[len] = 0;
+            term_idx = len;
+            return; // Stop at first match
+        }
     }
 }
 
@@ -127,7 +157,9 @@ void kernel_main(void) {
         if (!user_process_active) {
             char c;
             while ((c = get_char())) {
-                if (c == '\b') {
+                if (c == '\t') { // TAB
+                    autocomplete();
+                } else if (c == '\b') {
                     if (term_idx > 0) {
                         term_input[--term_idx] = 0;
                     }
