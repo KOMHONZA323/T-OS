@@ -199,8 +199,11 @@ void kernel_main(void) {
     run_system_checks();
 
     memory_set(term_input, 0, TERM_BUF_SIZE);
-    term_print("T-OS Terminal v1.0");
-    term_print("Type 'help' for commands.");
+
+    // Fake compilation history for showcase
+    term_print("user@t-os:~$ tasm kernel.asm");
+    term_print("TASM v1.0: Assembly Complete.");
+    term_print("Success: kernel.texf generated (2048 bytes).");
 
     while (1) {
         uint32_t start_tick = get_tick_count();
@@ -243,6 +246,7 @@ void kernel_main(void) {
         int my = get_mouse_y();
         uint8_t mb = get_mouse_buttons();
 
+        /*
         if (mb & 1) {
             if (mx > g_width - 30 && mx < g_width - 10 && my > g_height - 30 && my < g_height - 10) {
                 shutdown();
@@ -251,6 +255,7 @@ void kernel_main(void) {
                 reboot();
             }
         }
+        */
 
         draw_rect_px(mx, my, 10, 10, COLOR_WHITE);
         draw_rect_px(mx+2, my+2, 6, 6, COLOR_BLACK);
@@ -271,10 +276,30 @@ void kernel_main(void) {
 
 void draw_interface() {
     draw_wallpaper();
-    int w2_x = (g_width * 20) / 100;
-    int w2_y = (g_height * 20) / 100;
-    int w2_w = (g_width * 60) / 100;
-    int w2_h = (g_height * 50) / 100;
+
+    // Window 1: C Code Editor (Left)
+    int w1_x = 50;
+    int w1_y = 80;
+    int w1_w = (g_width / 2) - 50;
+    int w1_h = g_height - 160;
+    if (w1_w < 300) w1_w = 300;
+
+    // Safety clamp
+    if (w1_x + w1_w > g_width) w1_w = g_width - w1_x - 10;
+
+    draw_window_modern(w1_x, w1_y, w1_w, w1_h, "Code - main.c");
+    draw_c_code_content(w1_x + 10, w1_y + 30);
+
+    // Window 2: Terminal (Right/Overlapping)
+    int w2_x = (g_width / 2) + 20;
+    int w2_y = 120;
+    int w2_w = (g_width / 2) - 40;
+    int w2_h = g_height - 200;
+    if (w2_w < 300) w2_w = 300;
+
+    if (w2_x + w2_w > g_width) {
+        w2_x = g_width - w2_w - 20;
+    }
 
     draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
     draw_terminal_content(w2_x + 10, w2_y + 30);
@@ -309,30 +334,74 @@ void draw_bottom_bar() {
 
     draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
 
+    // Stylized T Start Button
     int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
+    int t_thick = 4;
+    int t_x = 10;
+    int t_y = y + 5;
+    int t_w = start_size;
+    int t_h = start_size;
 
+    draw_rect_px(t_x, t_y, t_w, t_thick, COLOR_NEON_BLUE);
+    draw_rect_px(t_x + (t_w - t_thick)/2, t_y, t_thick, t_h, COLOR_NEON_BLUE);
+
+    // Centered App Icons with Glow
     int center_x = g_width / 2;
-    int icon_size = height - 15;
-    int icon_spacing = icon_size + 10;
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    int icon_size = height - 12;
+    int icon_spacing = icon_size + 15;
+    uint32_t glow_col = 0x4000E5FF;
 
-    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
-    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
+    // Icon 1
+    draw_rect_alpha(center_x - icon_spacing - 2, y + 6 - 2, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x - icon_spacing, y + 6, icon_size, icon_size, COLOR_NEON_BLUE);
 
-    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
-    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
+    // Icon 2
+    draw_rect_alpha(center_x - 2, y + 6 - 2, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x, y + 6, icon_size, icon_size, COLOR_NEON_BLUE);
+
+    // Icon 3
+    draw_rect_alpha(center_x + icon_spacing - 2, y + 6 - 2, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x + icon_spacing, y + 6, icon_size, icon_size, COLOR_NEON_BLUE);
+
+    // Show Desktop Sliver
+    draw_rect_alpha(g_width - 6, y, 6, height, 0x80FFFFFF);
 }
 
 void draw_wallpaper() {
     draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
-    draw_line(0, g_height, g_width, 0, COLOR_CHARCOAL);
-    draw_line(0, 0, g_width, g_height, COLOR_CHARCOAL);
-    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x1000E5FF);
-    draw_circle(g_width/2, g_height/2, g_height/3, 0x101E1E1E, 0);
+
+    // Geometric Charcoal Pattern
+    for (int i = 0; i < g_width + g_height; i += 60) {
+        draw_line(i, 0, 0, i, COLOR_CHARCOAL);
+    }
+
+    // Abstract Shapes
+    draw_rect_alpha(100, 100, 300, 300, 0x201E1E1E);
+    draw_rect_alpha(g_width - 400, g_height - 400, 300, 300, 0x201E1E1E);
+
+    // Neon Blue Accents
+    draw_line(0, g_height/2, g_width, g_height/2 - 100, 0x8000E5FF);
+    draw_circle(g_width/2, g_height/2, 200, 0x4000E5FF, 0);
+    draw_rect_alpha(g_width/2 - 150, g_height/2 - 150, 300, 300, 0x0500E5FF);
+}
+
+void draw_wifi_icon(int x, int y, uint32_t color) {
+    draw_rect_px(x+7, y+12, 2, 2, color);
+    draw_line(x+5, y+9, x+8, y+6, color);
+    draw_line(x+8, y+6, x+11, y+9, color);
+    draw_line(x+2, y+5, x+8, y+0, color);
+    draw_line(x+8, y+0, x+14, y+5, color);
+}
+
+void draw_battery_icon(int x, int y, uint32_t color) {
+    draw_rect_px(x, y+4, 16, 8, color);
+    draw_rect_px(x+16, y+6, 2, 4, color);
+}
+
+void draw_power_icon(int x, int y, uint32_t color) {
+    draw_line(x+8, y, x+4, y+8, color);
+    draw_line(x+4, y+8, x+12, y+8, color);
+    draw_line(x+12, y+8, x+6, y+16, color);
 }
 
 void draw_top_bar() {
@@ -348,9 +417,10 @@ void draw_top_bar() {
     int time_width = strlen(time) * 8;
     draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
-    char* tray = "WF BT PWR";
-    int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
+    int tray_x = g_width - 80;
+    draw_wifi_icon(tray_x, text_y, COLOR_TOP_BAR_TEXT);
+    draw_battery_icon(tray_x + 25, text_y, COLOR_TOP_BAR_TEXT);
+    draw_power_icon(tray_x + 50, text_y, COLOR_TOP_BAR_TEXT);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
