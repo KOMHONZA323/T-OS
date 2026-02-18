@@ -167,7 +167,31 @@ add_custom_command(OUTPUT ${TGC_TEXF}
     DEPENDS ${TGC_BIN}
 )
 
-# Update OS Image target (Search and Replace)
-# I need to append tgc.texf=${TGC_TEXF} to make_fat args.
-# Since I am appending to file, I can't easily modify the existing 'add_custom_target(t_os ...)' block.
-# I will use 'replace_with_git_merge_diff' to update the target.
+# UEFI Build
+set(UEFI_SRC "${CMAKE_SOURCE_DIR}/src/uefi/main.c")
+set(UEFI_OBJ "${BUILD_DIR}/uefi_main.o")
+set(UEFI_SO "${BUILD_DIR}/uefi_main.so")
+set(UEFI_BIN "${BUILD_DIR}/bootx64.efi")
+
+add_custom_command(OUTPUT ${UEFI_OBJ}
+    COMMAND gcc -ffreestanding -m64 -fno-stack-protector -mno-red-zone -fshort-wchar -I${CMAKE_SOURCE_DIR}/src/uefi -c ${UEFI_SRC} -o ${UEFI_OBJ}
+    DEPENDS ${UEFI_SRC} "${CMAKE_SOURCE_DIR}/src/uefi/uefi.h"
+    COMMENT "Compiling UEFI Main"
+)
+
+add_custom_command(OUTPUT ${UEFI_SO}
+    COMMAND ld -shared -Bsymbolic -T ${CMAKE_SOURCE_DIR}/src/uefi/linker.ld -o ${UEFI_SO} ${UEFI_OBJ}
+    DEPENDS ${UEFI_OBJ} "${CMAKE_SOURCE_DIR}/src/uefi/linker.ld"
+    COMMENT "Linking UEFI Shared Object"
+)
+
+add_custom_command(OUTPUT ${UEFI_BIN}
+    COMMAND objcopy -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela -j .rel.* -j .rela.* -j .reloc --target pei-x86-64 --subsystem=10 ${UEFI_SO} ${UEFI_BIN}
+    DEPENDS ${UEFI_SO}
+    COMMENT "Creating bootx64.efi"
+)
+
+add_custom_target(uefi_hello ALL
+    DEPENDS ${UEFI_BIN}
+    COMMENT "Building UEFI Hello World Application"
+)
