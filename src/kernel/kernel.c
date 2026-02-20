@@ -269,15 +269,76 @@ void kernel_main(void) {
     }
 }
 
+void draw_icon_wifi(int x, int y, uint32_t color) {
+    // 3 ascending bars
+    draw_rect_px(x, y + 8, 2, 4, color);
+    draw_rect_px(x + 4, y + 5, 2, 7, color);
+    draw_rect_px(x + 8, y + 2, 2, 10, color);
+}
+
+void draw_icon_battery(int x, int y, uint32_t color) {
+    draw_rect_px(x, y + 4, 16, 8, color); // Body outline
+    draw_rect_px(x + 2, y + 6, 12, 4, 0xFF00FF00); // Level Green
+    draw_rect_px(x + 16, y + 6, 2, 4, color); // Tip
+}
+
+void draw_icon_power(int x, int y, uint32_t color) {
+    draw_circle(x + 6, y + 6, 6, color, 0); // Ring
+    draw_rect_px(x + 5, y, 2, 6, color); // Line at top
+}
+
+void draw_icon_code(int x, int y, int size) {
+    // {} icon
+    int cx = x + size/2;
+    int cy = y + size/2;
+    // {
+    draw_line(cx - 8, cy - 6, cx - 12, cy, 0xFFFFFFFF);
+    draw_line(cx - 12, cy, cx - 8, cy + 6, 0xFFFFFFFF);
+    // }
+    draw_line(cx + 8, cy - 6, cx + 12, cy, 0xFFFFFFFF);
+    draw_line(cx + 12, cy, cx + 8, cy + 6, 0xFFFFFFFF);
+    // /
+    draw_line(cx + 4, cy - 8, cx - 4, cy + 8, 0xFF00E5FF);
+}
+
+void draw_icon_terminal(int x, int y, int size) {
+    // >_ icon
+    int cx = x + size/2;
+    int cy = y + size/2;
+    draw_string_px(">_", cx - 8, cy - 8, 0xFFFFFFFF);
+}
+
+void draw_icon_settings(int x, int y, int size) {
+    // Gear icon (simplified circle with teeth)
+    int cx = x + size/2;
+    int cy = y + size/2;
+    draw_circle(cx, cy, 8, 0xFFFFFFFF, 0);
+    draw_circle(cx, cy, 3, 0xFFFFFFFF, 1);
+    // Teeth (4 lines)
+    draw_line(cx, cy - 10, cx, cy + 10, 0xFFFFFFFF);
+    draw_line(cx - 10, cy, cx + 10, cy, 0xFFFFFFFF);
+}
+
 void draw_interface() {
     draw_wallpaper();
-    int w2_x = (g_width * 20) / 100;
-    int w2_y = (g_height * 20) / 100;
-    int w2_w = (g_width * 60) / 100;
-    int w2_h = (g_height * 50) / 100;
 
-    draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
-    draw_terminal_content(w2_x + 10, w2_y + 30);
+    // Window 1: C Code Editor (Left)
+    int code_x = (g_width * 5) / 100;
+    int code_y = (g_height * 15) / 100;
+    int code_w = (g_width * 42) / 100;
+    int code_h = (g_height * 60) / 100;
+
+    draw_window_modern(code_x, code_y, code_w, code_h, "main.c - T-OS Code");
+    draw_c_code_content(code_x + 10, code_y + 35);
+
+    // Window 2: Terminal (Right)
+    int term_x = (g_width * 53) / 100;
+    int term_y = (g_height * 15) / 100;
+    int term_w = (g_width * 42) / 100;
+    int term_h = (g_height * 60) / 100;
+
+    draw_window_modern(term_x, term_y, term_w, term_h, "Terminal");
+    draw_terminal_content(term_x + 10, term_y + 35);
 
     draw_top_bar();
     draw_bottom_bar();
@@ -289,50 +350,102 @@ void draw_terminal_content(int x, int y) {
     uint32_t text_col = 0xFFCCCCCC;
     uint32_t prompt_col = COLOR_NEON_BLUE;
 
-    for (int i=0; i<term_hist_count; i++) {
-        draw_string_px(term_history[i], x, current_y, text_col);
-        current_y += line_h;
-    }
+    // Showcase Content (Simulate Compilation Output)
+    draw_string_px("user@t-os:~$ tasm kernel.asm", x, current_y, text_col);
+    current_y += line_h;
 
+    draw_string_px("Assembling 'kernel.asm'...", x, current_y, 0xFF888888);
+    current_y += line_h;
+
+    draw_string_px("[SUCCESS] Output: kernel.texf (2456 bytes)", x, current_y, 0xFF00FF00); // Green
+    current_y += line_h;
+
+    draw_string_px("          0 Errors, 0 Warnings", x, current_y, 0xFF00FF00); // Green
+    current_y += line_h;
+    current_y += line_h; // Spacing
+
+    // Current Prompt
     draw_string_px("user@t-os:~$", x, current_y, prompt_col);
-    draw_string_px(term_input, x + 100, current_y, text_col);
+    // draw_string_px(term_input, x + 100, current_y, text_col); // Use term_input if desired, but for showcase we leave it empty.
 
     if ((get_tick_count() / 500) % 2) {
-        int input_w = strlen(term_input) * 8;
-        draw_rect_px(x + 100 + input_w, current_y + 2, 8, 12, text_col);
+        // int input_w = strlen(term_input) * 8;
+        draw_rect_px(x + 100, current_y + 2, 8, 12, text_col); // Cursor at prompt
     }
 }
 
 void draw_bottom_bar() {
-    int height = (g_height < 600) ? 30 : 40;
+    int height = 48; // Fixed taller height
     int y = g_height - height;
 
+    // Background: Semi-transparent frosted glass
     draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
 
-    int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
+    // Start Button: Stylized T (Geometric, Neon Blue)
+    int start_x = 10;
+    int start_y = y + (height - 24) / 2;
+    // Horizontal bar
+    draw_rect_px(start_x, start_y, 24, 6, COLOR_NEON_BLUE);
+    // Vertical bar
+    draw_rect_px(start_x + 9, start_y + 6, 6, 18, COLOR_NEON_BLUE);
+    // Accent line inside vertical bar
+    draw_rect_px(start_x + 11, start_y + 6, 2, 18, 0xFFFFFFFF);
 
-    int center_x = g_width / 2;
-    int icon_size = height - 15;
-    int icon_spacing = icon_size + 10;
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    // Centered App Icons with Glow
+    int icon_size = 32;
+    int spacing = 20;
+    int icon_y = y + (height - icon_size) / 2;
 
-    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
-    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
+    // Calculate starting X for centered icons
+    int total_width = (3 * icon_size) + (2 * spacing);
+    int current_x = (g_width - total_width) / 2;
 
-    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
-    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
+    // 1. Terminal Icon
+    draw_circle(current_x + icon_size/2, icon_y + icon_size/2, icon_size/2 + 4, COLOR_ICON_GLOW, 1); // Glow
+    draw_rect_px(current_x, icon_y, icon_size, icon_size, 0xFF2D2D2D); // Icon BG
+    draw_icon_terminal(current_x, icon_y, icon_size);
+    // Active Indicator
+    draw_rect_px(current_x + 4, g_height - 2, icon_size - 8, 2, COLOR_NEON_BLUE);
+    current_x += icon_size + spacing;
+
+    // 2. Code Icon
+    draw_circle(current_x + icon_size/2, icon_y + icon_size/2, icon_size/2 + 4, COLOR_ICON_GLOW, 1);
+    draw_rect_px(current_x, icon_y, icon_size, icon_size, 0xFF2D2D2D);
+    draw_icon_code(current_x, icon_y, icon_size);
+    // Active Indicator
+    draw_rect_px(current_x + 4, g_height - 2, icon_size - 8, 2, COLOR_NEON_BLUE);
+    current_x += icon_size + spacing;
+
+    // 3. Settings Icon
+    draw_circle(current_x + icon_size/2, icon_y + icon_size/2, icon_size/2 + 4, COLOR_ICON_GLOW, 1);
+    draw_rect_px(current_x, icon_y, icon_size, icon_size, 0xFF2D2D2D);
+    draw_icon_settings(current_x, icon_y, icon_size);
+
+    // Show Desktop Sliver
+    draw_rect_px(g_width - 6, y, 6, height, 0x40FFFFFF);
+    draw_line(g_width - 7, y, g_width - 7, g_height, 0x20000000); // Separator
 }
 
 void draw_wallpaper() {
+    // Deep Charcoal/Obsidian background
     draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
+
+    // Abstract Geometric Shapes (Subtle Lines and Alpha Rects)
     draw_line(0, g_height, g_width, 0, COLOR_CHARCOAL);
     draw_line(0, 0, g_width, g_height, COLOR_CHARCOAL);
-    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x1000E5FF);
-    draw_circle(g_width/2, g_height/2, g_height/3, 0x101E1E1E, 0);
+
+    // Create depth with large alpha blended regions
+    // Right half lighter
+    draw_rect_alpha(g_width/2, 0, g_width/2, g_height, 0x05FFFFFF);
+    // Bottom half darker
+    draw_rect_alpha(0, g_height/2, g_width, g_height/2, 0x05000000);
+
+    // Neon accents (Very low alpha blue box in center)
+    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x0800E5FF);
+
+    // Geometric Circle Accents
+    draw_circle(g_width/2, g_height/2, g_height/3, 0x201E1E1E, 0); // Dark ring
+    draw_circle(g_width/2, g_height/2, g_height/3 + 2, 0x1000E5FF, 0); // Subtle blueish ring
 }
 
 void draw_top_bar() {
@@ -342,26 +455,47 @@ void draw_top_bar() {
     int text_y = (height - 16) / 2;
     if (text_y < 0) text_y = 0;
 
+    // Left: Activities
     draw_string_px("Activities", 10, text_y, COLOR_TOP_BAR_TEXT);
 
+    // Center: Clock
     char* time = "Oct 25 12:45 PM";
     int time_width = strlen(time) * 8;
     draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
-    char* tray = "WF BT PWR";
-    int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
+    // Right: Icons (Power, Battery, WiFi)
+    int icon_base_x = g_width - 20;
+
+    // Power
+    draw_icon_power(icon_base_x - 12, text_y, COLOR_WIFI);
+    icon_base_x -= 30;
+
+    // Battery
+    draw_icon_battery(icon_base_x - 16, text_y, COLOR_BATTERY);
+    icon_base_x -= 30;
+
+    // WiFi
+    draw_icon_wifi(icon_base_x - 12, text_y, COLOR_WIFI);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
-    draw_rect_alpha(x + 5, y + 5, w, h, 0x60000000);
-    draw_rounded_rect(x, y, w, h, 8, COLOR_CHARCOAL);
-    draw_string_px(title, x + 10, y + 5, COLOR_WHITE);
+    // Drop Shadow (Offset)
+    draw_rect_alpha(x + 8, y + 8, w, h, COLOR_SHADOW);
 
-    int radius = 4;
-    int spacing = 12;
-    int controls_x = x + w - 15;
-    int controls_y = y + 10;
+    // Window Body (Rounded)
+    draw_rounded_rect(x, y, w, h, 8, COLOR_CHARCOAL);
+
+    // Header separation line (optional, subtle)
+    // draw_line(x, y + 30, x + w, y + 30, 0xFF2D2D2D);
+
+    // Title
+    draw_string_px(title, x + 12, y + 8, COLOR_WHITE);
+
+    // Window Controls (Traffic Lights)
+    int radius = 5;
+    int spacing = 14;
+    int controls_x = x + w - 18;
+    int controls_y = y + 12;
 
     draw_circle(controls_x, controls_y, radius, COLOR_RED, 1);
     draw_circle(controls_x - spacing, controls_y, radius, COLOR_YELLOW, 1);
@@ -371,23 +505,31 @@ void draw_window_modern(int x, int y, int w, int h, const char* title) {
 void draw_c_code_content(int x, int y) {
     int line_h = 16;
     int current_y = y;
-    if (current_y + 6*line_h > g_height) return;
+
+    // Syntax Highlighted C Code
     draw_string_px("#include", x, current_y, COLOR_MAGENTA);
-    draw_string_px("<stdio.h>", x + 70, current_y, 0xFFCE9178);
+    draw_string_px("<stdio.h>", x + 72, current_y, 0xFFCE9178);
     current_y += line_h;
-    current_y += line_h;
+
+    draw_string_px("#include", x, current_y, COLOR_MAGENTA);
+    draw_string_px("<stdlib.h>", x + 72, current_y, 0xFFCE9178);
+    current_y += line_h * 2;
+
     draw_string_px("int", x, current_y, COLOR_BLUE);
-    draw_string_px("main", x + 30, current_y, COLOR_YELLOW);
-    draw_string_px("() {", x + 65, current_y, COLOR_WHITE);
+    draw_string_px("main", x + 32, current_y, COLOR_YELLOW);
+    draw_string_px("(int argc, char** argv) {", x + 72, current_y, COLOR_WHITE);
     current_y += line_h;
+
     draw_string_px("  printf", x, current_y, COLOR_YELLOW);
-    draw_string_px("(", x + 70, current_y, COLOR_WHITE);
-    draw_string_px("\"Hello!\"", x + 80, current_y, 0xFFCE9178);
-    draw_string_px(");", x + 150, current_y, COLOR_WHITE);
+    draw_string_px("(", x + 56, current_y, COLOR_WHITE);
+    draw_string_px("\"Welcome to T-OS!\\n\"", x + 64, current_y, 0xFFCE9178);
+    draw_string_px(");", x + 230, current_y, COLOR_WHITE);
     current_y += line_h;
+
     draw_string_px("  return", x, current_y, COLOR_MAGENTA);
-    draw_string_px("0;", x + 70, current_y, 0xFFB5CEA8);
+    draw_string_px("0;", x + 56, current_y, 0xFFB5CEA8);
     current_y += line_h;
+
     draw_string_px("}", x, current_y, COLOR_WHITE);
 }
 
