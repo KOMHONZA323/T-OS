@@ -59,8 +59,17 @@
 #define COLOR_CHARCOAL 0xFF1E1E1E
 #define COLOR_NEON_BLUE 0xFF00E5FF
 #define COLOR_GLASS_WHITE 0x40FFFFFF
-#define COLOR_TOP_BAR_BG 0xD0000000 // Translucent Black
-#define COLOR_TASKBAR_BG 0xB01E1E1E // Semi-transparent Frosted Glass
+#define COLOR_TOP_BAR_BG 0xA0000000 // Translucent Black (updated)
+#define COLOR_TASKBAR_BG 0x801E1E1E // Semi-transparent Frosted Glass (updated)
 #define COLOR_TOP_BAR_TEXT 0xFFFFFFFF
+
+/* Syntax Highlighting Colors */
+#define COLOR_SYNTAX_KEYWORD 0xFFC586C0
+#define COLOR_SYNTAX_STRING 0xFFCE9178
+#define COLOR_SYNTAX_COMMENT 0xFF6A9955
+#define COLOR_SYNTAX_NUMBER 0xFFB5CEA8
+#define COLOR_SYNTAX_TYPE 0xFF4EC9B0
+#define COLOR_SYNTAX_FUNC 0xFFDCDCAA
+#define COLOR_SYNTAX_PREPROC 0xFFC586C0
 
 #endif
