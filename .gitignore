@@ -3,6 +3,9 @@ build/
 *.bin
 *.vdi
 *.iso
+*.efi
+*.so
+*.o
 
 # Ignore CMake cache files if you ran cmake in the root by accident
 CMakeFiles/
