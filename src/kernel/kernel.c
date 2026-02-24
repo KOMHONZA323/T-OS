@@ -199,8 +199,16 @@ void kernel_main(void) {
     run_system_checks();
 
     memory_set(term_input, 0, TERM_BUF_SIZE);
+
+    // Pre-populate history for showcase
     term_print("T-OS Terminal v1.0");
     term_print("Type 'help' for commands.");
+    term_print("");
+    term_print("user@t-os:~/src$ tasm kernel.asm");
+    term_print("Assembler v1.0 ... Starts");
+    term_print("Pass 1... OK");
+    term_print("Pass 2... OK");
+    term_print("Success: kernel.texf generated.");
 
     while (1) {
         uint32_t start_tick = get_tick_count();
@@ -244,10 +252,13 @@ void kernel_main(void) {
         uint8_t mb = get_mouse_buttons();
 
         if (mb & 1) {
-            if (mx > g_width - 30 && mx < g_width - 10 && my > g_height - 30 && my < g_height - 10) {
+            // Power Button Logic (Top Right)
+            if (mx > g_width - 40 && my < 30) {
                 shutdown();
             }
-            if (mx > g_width - 60 && mx < g_width - 40 && my > g_height - 30 && my < g_height - 10) {
+
+            // Start Button Logic (Bottom Left)
+            if (mx < 50 && my > g_height - 50) {
                 reboot();
             }
         }
@@ -271,16 +282,154 @@ void kernel_main(void) {
 
 void draw_interface() {
     draw_wallpaper();
-    int w2_x = (g_width * 20) / 100;
-    int w2_y = (g_height * 20) / 100;
-    int w2_w = (g_width * 60) / 100;
-    int w2_h = (g_height * 50) / 100;
 
-    draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
-    draw_terminal_content(w2_x + 10, w2_y + 30);
+    // Draw C Code Editor Window (Top Left-ish)
+    int win1_x = 80;
+    int win1_y = 60;
+    int win1_w = 500;
+    int win1_h = 350;
+
+    draw_window_modern(win1_x, win1_y, win1_w, win1_h, "editor.c - Code");
+    draw_c_code_content(win1_x + 10, win1_y + 40);
+
+    // Draw Terminal Window (Bottom Right-ish, overlapping)
+    int win2_x = 300;
+    int win2_y = 200;
+    int win2_w = 500;
+    int win2_h = 350;
+
+    draw_window_modern(win2_x, win2_y, win2_w, win2_h, "Terminal");
+    draw_terminal_content(win2_x + 10, win2_y + 40);
 
     draw_top_bar();
     draw_bottom_bar();
+}
+
+void draw_wallpaper() {
+    // Obsidian Background
+    draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
+
+    // Abstract Geometric Patterns
+    // Draw a "mesh" or grid faintly
+    for (int i=0; i<g_width; i+=100) {
+        draw_line(i, 0, i+200, g_height, 0x10303030);
+    }
+
+    // Some glowing rects
+    draw_rect_alpha(g_width/4, g_height/3, 200, 5, 0x4000E5FF);
+    draw_rect_alpha(g_width/2, g_height/2, 5, 200, 0x4000E5FF);
+
+    // Diagonal line
+    draw_line(0, g_height, g_width, 0, COLOR_CHARCOAL);
+}
+
+void draw_top_bar() {
+    int height = 28;
+    draw_rect_alpha(0, 0, g_width, height, COLOR_TOP_BAR_BG);
+
+    int text_y = (height - 16) / 2;
+    if (text_y < 0) text_y = 0; // centered vertically
+
+    // Activities
+    draw_string_px("Activities", 10, text_y, COLOR_WHITE);
+
+    // Center Clock
+    char* time = "Oct 25 12:45 PM";
+    int time_w = strlen(time) * 8;
+    draw_string_px(time, (g_width - time_w)/2, text_y, COLOR_WHITE);
+
+    // Right Icons (Wi-Fi, Battery, Power)
+    int icon_x = g_width - 20;
+
+    // Power (Circle)
+    draw_circle(icon_x, height/2, 6, COLOR_WHITE, 0); // Open circle
+    draw_line(icon_x, height/2 - 4, icon_x, height/2, COLOR_WHITE); // Line
+
+    icon_x -= 30;
+    // Battery (Rect)
+    draw_rect_px(icon_x, height/2 - 5, 16, 10, COLOR_WHITE);
+    draw_rect_px(icon_x + 16, height/2 - 2, 2, 4, COLOR_WHITE); // Tip
+    draw_rect_px(icon_x + 2, height/2 - 3, 10, 6, COLOR_GREEN); // Fill
+
+    icon_x -= 30;
+    // Wi-Fi (Ascending bars)
+    draw_rect_px(icon_x, height/2 + 2, 2, 2, COLOR_WHITE);
+    draw_rect_px(icon_x + 4, height/2 - 1, 2, 5, COLOR_WHITE);
+    draw_rect_px(icon_x + 8, height/2 - 4, 2, 8, COLOR_WHITE);
+    draw_rect_px(icon_x + 12, height/2 - 7, 2, 11, COLOR_WHITE);
+}
+
+void draw_bottom_bar() {
+    int height = 48;
+    int y = g_height - height;
+
+    // Frosted Glass Taskbar
+    draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
+
+    // "T" Start Button
+    int start_x = 10;
+    int start_y = y + 8;
+    // Stylized T
+    draw_rect_px(start_x, start_y, 32, 8, COLOR_NEON_BLUE);
+    draw_rect_px(start_x + 12, start_y, 8, 32, COLOR_NEON_BLUE);
+
+    // App Icons (Center)
+    int center_x = g_width / 2;
+    int icon_size = 32;
+    int spacing = 48;
+    int icon_y = y + 8;
+
+    // Icon 1
+    draw_rounded_rect(center_x - spacing, icon_y, icon_size, icon_size, 4, 0xFF4080FF);
+    // Icon 2
+    draw_rounded_rect(center_x, icon_y, icon_size, icon_size, 4, 0xFF4080FF);
+    // Icon 3
+    draw_rounded_rect(center_x + spacing, icon_y, icon_size, icon_size, 4, 0xFF4080FF);
+
+    // Glow under middle icon
+    draw_rect_px(center_x + 4, y + height - 2, icon_size - 8, 2, COLOR_NEON_BLUE);
+
+    // Show Desktop Sliver
+    draw_rect_px(g_width - 5, y, 5, height, 0x50FFFFFF);
+}
+
+void draw_window_modern(int x, int y, int w, int h, const char* title) {
+    // Drop Shadow
+    draw_rounded_rect(x + 8, y + 8, w, h, 8, 0x60000000);
+
+    // Window Body
+    draw_rounded_rect(x, y, w, h, 8, COLOR_CHARCOAL);
+
+    // Title
+    draw_string_px(title, x + 16, y + 10, COLOR_WHITE);
+
+    // Controls (Right aligned)
+    int cx = x + w - 20;
+    int cy = y + 16;
+    draw_circle(cx, cy, 6, COLOR_RED, 1);
+    draw_circle(cx - 20, cy, 6, COLOR_YELLOW, 1);
+    draw_circle(cx - 40, cy, 6, COLOR_GREEN, 1);
+}
+
+void draw_c_code_content(int x, int y) {
+    int lh = 20; // Line height
+    int cy = y;
+    if (cy + 7*lh > g_height) return;
+
+    // Line numbers + Code
+    draw_string_px("1  #include <stdio.h>", x, cy, 0xFFC586C0); // Magenta-ish
+    cy += lh;
+    draw_string_px("2  ", x, cy, 0xFF858585);
+    cy += lh;
+    draw_string_px("3  int main() {", x, cy, 0xFF569CD6); // Blue-ish
+    cy += lh;
+    draw_string_px("4      // T-OS Kernel Entry", x, cy, 0xFF6A9955); // Green comment
+    cy += lh;
+    draw_string_px("5      printf(\"Welcome to T-OS\");", x, cy, 0xFFCE9178); // String color
+    cy += lh;
+    draw_string_px("6      return 0;", x, cy, 0xFFC586C0);
+    cy += lh;
+    draw_string_px("7  }", x, cy, 0xFFD4D4D4);
 }
 
 void draw_terminal_content(int x, int y) {
@@ -290,105 +439,23 @@ void draw_terminal_content(int x, int y) {
     uint32_t prompt_col = COLOR_NEON_BLUE;
 
     for (int i=0; i<term_hist_count; i++) {
-        draw_string_px(term_history[i], x, current_y, text_col);
+        uint32_t col = text_col;
+        // Check for specific messages to colorize
+        if (term_history[i][0] == 'S' && term_history[i][1] == 'u' && term_history[i][2] == 'c') {
+            col = COLOR_GREEN;
+        }
+        draw_string_px(term_history[i], x, current_y, col);
         current_y += line_h;
     }
 
     draw_string_px("user@t-os:~$", x, current_y, prompt_col);
     draw_string_px(term_input, x + 100, current_y, text_col);
 
+    // Blinking cursor
     if ((get_tick_count() / 500) % 2) {
         int input_w = strlen(term_input) * 8;
         draw_rect_px(x + 100 + input_w, current_y + 2, 8, 12, text_col);
     }
-}
-
-void draw_bottom_bar() {
-    int height = (g_height < 600) ? 30 : 40;
-    int y = g_height - height;
-
-    draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
-
-    int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
-
-    int center_x = g_width / 2;
-    int icon_size = height - 15;
-    int icon_spacing = icon_size + 10;
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-
-    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
-    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
-
-    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
-    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
-}
-
-void draw_wallpaper() {
-    draw_rect_px(0, 0, g_width, g_height, COLOR_OBSIDIAN);
-    draw_line(0, g_height, g_width, 0, COLOR_CHARCOAL);
-    draw_line(0, 0, g_width, g_height, COLOR_CHARCOAL);
-    draw_rect_alpha(g_width/4, g_height/4, g_width/2, g_height/2, 0x1000E5FF);
-    draw_circle(g_width/2, g_height/2, g_height/3, 0x101E1E1E, 0);
-}
-
-void draw_top_bar() {
-    int height = (g_height < 600) ? 20 : 30;
-    draw_rect_alpha(0, 0, g_width, height, COLOR_TOP_BAR_BG);
-
-    int text_y = (height - 16) / 2;
-    if (text_y < 0) text_y = 0;
-
-    draw_string_px("Activities", 10, text_y, COLOR_TOP_BAR_TEXT);
-
-    char* time = "Oct 25 12:45 PM";
-    int time_width = strlen(time) * 8;
-    draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
-
-    char* tray = "WF BT PWR";
-    int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
-}
-
-void draw_window_modern(int x, int y, int w, int h, const char* title) {
-    draw_rect_alpha(x + 5, y + 5, w, h, 0x60000000);
-    draw_rounded_rect(x, y, w, h, 8, COLOR_CHARCOAL);
-    draw_string_px(title, x + 10, y + 5, COLOR_WHITE);
-
-    int radius = 4;
-    int spacing = 12;
-    int controls_x = x + w - 15;
-    int controls_y = y + 10;
-
-    draw_circle(controls_x, controls_y, radius, COLOR_RED, 1);
-    draw_circle(controls_x - spacing, controls_y, radius, COLOR_YELLOW, 1);
-    draw_circle(controls_x - spacing*2, controls_y, radius, COLOR_GREEN, 1);
-}
-
-void draw_c_code_content(int x, int y) {
-    int line_h = 16;
-    int current_y = y;
-    if (current_y + 6*line_h > g_height) return;
-    draw_string_px("#include", x, current_y, COLOR_MAGENTA);
-    draw_string_px("<stdio.h>", x + 70, current_y, 0xFFCE9178);
-    current_y += line_h;
-    current_y += line_h;
-    draw_string_px("int", x, current_y, COLOR_BLUE);
-    draw_string_px("main", x + 30, current_y, COLOR_YELLOW);
-    draw_string_px("() {", x + 65, current_y, COLOR_WHITE);
-    current_y += line_h;
-    draw_string_px("  printf", x, current_y, COLOR_YELLOW);
-    draw_string_px("(", x + 70, current_y, COLOR_WHITE);
-    draw_string_px("\"Hello!\"", x + 80, current_y, 0xFFCE9178);
-    draw_string_px(");", x + 150, current_y, COLOR_WHITE);
-    current_y += line_h;
-    draw_string_px("  return", x, current_y, COLOR_MAGENTA);
-    draw_string_px("0;", x + 70, current_y, 0xFFB5CEA8);
-    current_y += line_h;
-    draw_string_px("}", x, current_y, COLOR_WHITE);
 }
 
 void open_settings() {
