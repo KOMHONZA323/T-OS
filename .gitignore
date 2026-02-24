@@ -9,3 +9,9 @@ CMakeFiles/
 CMakeCache.txt
 Makefile
 cmake_install.cmake
+
+# UEFI Build Artifacts
+*.efi
+*.so
+*.o
+*.img
