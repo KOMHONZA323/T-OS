@@ -2,8 +2,9 @@
 import sys
 import struct
 import os
+import shutil
 
-def create_fat16_image(image_path, efi_file_path):
+def create_fat16_volume(volume_path, efi_file_path):
     # FAT16 Constants
     SECTOR_SIZE = 512
     SECTORS_PER_CLUSTER = 4 # 2KB clusters to keep count < 65525 for 64MB disk
@@ -70,7 +71,7 @@ def create_fat16_image(image_path, efi_file_path):
     bpb[510:512] = b'\x55\xAA'
 
     # Create image file
-    with open(image_path, 'wb') as f:
+    with open(volume_path, 'wb') as f:
         # Write BPB
         f.write(bpb)
 
@@ -113,7 +114,7 @@ def create_fat16_image(image_path, efi_file_path):
         return data_offset + ((cluster - 2) * SECTORS_PER_CLUSTER * SECTOR_SIZE)
 
     # Open image for update
-    with open(image_path, 'r+b') as f:
+    with open(volume_path, 'r+b') as f:
         def write_fat_entry(cluster, value):
              # FAT1 offset
              offset = SECTOR_SIZE * RESERVED_SECTORS + (cluster * 2)
@@ -209,9 +210,93 @@ def create_fat16_image(image_path, efi_file_path):
         f.seek(file_offset)
         f.write(efi_data)
 
+    return TOTAL_SECTORS
+
+def create_partitioned_image(image_path, efi_file_path):
+    # 1. Create FAT Volume in a temp file
+    temp_fat = image_path + ".fat"
+    fat_sectors = create_fat16_volume(temp_fat, efi_file_path)
+
+    # 2. Create Final Disk Image with MBR
+    # Layout:
+    # Sector 0: MBR
+    # Sector 1..2047: Padding
+    # Sector 2048..End: FAT Volume
+
+    start_lba = 2048
+    disk_sectors = start_lba + fat_sectors
+    sector_size = 512
+
+    with open(image_path, 'wb') as f:
+        # Create MBR
+        mbr = bytearray(sector_size)
+
+        # Partition Entry 1 (Offset 446 / 0x1BE)
+        # Status: 0x80 (Active)
+        mbr[446] = 0x80
+
+        # CHS Start (Head 0, Sector 2, Cylinder 0 ? No. LBA 2048)
+        # Geometry assumption: H=64, S=32.
+        # LBA 2048 -> C=1, H=0, S=1.
+        # Cylinder 1 (0x01). Head 0 (0x00). Sector 1 (0x01).
+        mbr[447] = 0x00 # Head
+        mbr[448] = 0x01 # Sector (bits 0-5) | CylHigh (bits 6-7)
+        mbr[449] = 0x01 # CylLow
+
+        # Type: 0xEF (EFI)
+        mbr[450] = 0xEF
+
+        # CHS End (Calculate)
+        # End LBA = Start + Size - 1
+        end_lba = start_lba + fat_sectors - 1
+        # C = End / (64*32) = End / 2048
+        # H = (End / 32) % 64
+        # S = (End % 32) + 1
+
+        c = end_lba // 2048
+        h = (end_lba // 32) % 64
+        s = (end_lba % 32) + 1
+
+        if c > 1023:
+            # Max CHS
+            mbr[451] = 0xFE # Head
+            mbr[452] = 0xFF # Sector/CylHigh
+            mbr[453] = 0xFF # CylLow
+        else:
+            mbr[451] = h
+            # Sector byte: s | ((c >> 8) & 0x03) << 6
+            mbr[452] = (s & 0x3F) | (((c >> 8) & 0x03) << 6)
+            mbr[453] = c & 0xFF
+
+        # LBA Start (4 bytes, little endian)
+        struct.pack_into('<I', mbr, 454, start_lba)
+
+        # LBA Size (4 bytes, little endian)
+        struct.pack_into('<I', mbr, 458, fat_sectors)
+
+        # Signature
+        mbr[510] = 0x55
+        mbr[511] = 0xAA
+
+        f.write(mbr)
+
+        # Write Padding (from Sector 1 to 2047)
+        # 2048 - 1 = 2047 sectors padding
+        padding_size = (start_lba - 1) * sector_size
+        # We can just seek
+        f.seek(start_lba * sector_size)
+
+        # Append FAT Volume
+        with open(temp_fat, 'rb') as tf:
+            shutil.copyfileobj(tf, f)
+
+    # Cleanup
+    os.remove(temp_fat)
+    print(f"Created partitioned disk image at {image_path}")
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: make_fat.py <image_path> <efi_file_path>")
         sys.exit(1)
 
-    create_fat16_image(sys.argv[1], sys.argv[2])
+    create_partitioned_image(sys.argv[1], sys.argv[2])
