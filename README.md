@@ -46,24 +46,16 @@ T-OS is a from-scratch, bare-metal operating system built for x86_64 architectur
 
 ## Running with QEMU
 
-To run T-OS in QEMU, you need the OVMF UEFI firmware.
+To run T-OS in QEMU, you need the OVMF UEFI firmware (`edk2-ovmf` on Fedora, `ovmf` on Debian/Ubuntu).
 
-1.  **Locate OVMF:**
-    On Fedora: `/usr/share/edk2/ovmf/OVMF_CODE.fd`
-    On Ubuntu/Debian: `/usr/share/ovmf/OVMF.fd`
-
-2.  **Run Command:**
-    Execute the following command from the `build` directory:
+1.  **Run the helper script:**
+    Execute the following command from the project root:
 
     ```bash
-    qemu-system-x86_64 \
-        -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
-        -drive if=pflash,format=raw,file=/usr/share/edk2/ovmf/OVMF_VARS.fd \
-        -drive format=raw,file=tos.img \
-        -net none
+    ./run.sh
     ```
 
-    *Note: Adjust the OVMF paths according to your distribution.*
+    This script automatically locates the system's OVMF firmware, copies it to a local `ovmf/` directory to avoid permission issues, and launches QEMU.
 
 ## Directory Structure
 
