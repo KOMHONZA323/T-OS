@@ -1,0 +1,8 @@
+Instructions to flash T-OS to a USB drive:
+
+1. Insert your USB drive.
+2. Find the device name (e.g., /dev/sdb) using `lsblk`.
+3. Unmount any mounted partitions: `sudo umount /dev/sdb*`
+4. Run the following command (BE CAREFUL! THIS WIPES THE DRIVE):
+   sudo dd if=tos.img of=/dev/sdX bs=4M status=progress && sync
+   (Replace /dev/sdX with your USB device, e.g., /dev/sdb)
