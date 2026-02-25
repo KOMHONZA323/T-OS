@@ -181,6 +181,14 @@ void process_command(char* cmd) {
     }
 }
 
+void init_terminal() {
+    term_print("tasm kernel.asm");
+    term_print("Assembler v1.0 ... Starts");
+    term_print("Pass 1... OK");
+    term_print("Pass 2... OK");
+    term_print("Success: kernel.texf generated.");
+}
+
 void kernel_main(void) {
     init_screen();
     init_pmm();
@@ -201,6 +209,8 @@ void kernel_main(void) {
     memory_set(term_input, 0, TERM_BUF_SIZE);
     term_print("T-OS Terminal v1.0");
     term_print("Type 'help' for commands.");
+
+    init_terminal();
 
     while (1) {
         uint32_t start_tick = get_tick_count();
@@ -244,11 +254,10 @@ void kernel_main(void) {
         uint8_t mb = get_mouse_buttons();
 
         if (mb & 1) {
-            if (mx > g_width - 30 && mx < g_width - 10 && my > g_height - 30 && my < g_height - 10) {
-                shutdown();
-            }
-            if (mx > g_width - 60 && mx < g_width - 40 && my > g_height - 30 && my < g_height - 10) {
-                reboot();
+            // Show Desktop Sliver (Far Right 6px)
+            int bar_h = (g_height < 600) ? 30 : 40;
+            if (mx >= g_width - 6 && my >= g_height - bar_h) {
+                 // Show Desktop action (placeholder)
             }
         }
 
@@ -271,10 +280,20 @@ void kernel_main(void) {
 
 void draw_interface() {
     draw_wallpaper();
-    int w2_x = (g_width * 20) / 100;
-    int w2_y = (g_height * 20) / 100;
-    int w2_w = (g_width * 60) / 100;
-    int w2_h = (g_height * 50) / 100;
+
+    // Window 1: C Code Editor (Top-Left)
+    int w1_x = (g_width * 10) / 100;
+    int w1_y = (g_height * 15) / 100;
+    int w1_w = (g_width * 40) / 100;
+    int w1_h = (g_height * 50) / 100;
+    draw_window_modern(w1_x, w1_y, w1_w, w1_h, "editor.c - Code");
+    draw_c_code_content(w1_x + 10, w1_y + 30);
+
+    // Window 2: Terminal (Bottom-Right, overlapping)
+    int w2_x = (g_width * 35) / 100;
+    int w2_y = (g_height * 30) / 100;
+    int w2_w = (g_width * 50) / 100;
+    int w2_h = (g_height * 45) / 100;
 
     draw_window_modern(w2_x, w2_y, w2_w, w2_h, "Terminal");
     draw_terminal_content(w2_x + 10, w2_y + 30);
@@ -309,22 +328,44 @@ void draw_bottom_bar() {
 
     draw_rect_alpha(0, y, g_width, height, COLOR_TASKBAR_BG);
 
+    // Stylized T Start Button
     int start_size = height - 10;
-    draw_rect_px(5, y + 5, start_size, start_size, COLOR_NEON_BLUE);
-    draw_string_px("T", 10, y + (height-16)/2, COLOR_OBSIDIAN);
+    // Glow effect
+    draw_rect_alpha(5, y + 5, start_size, start_size, 0x4000E5FF);
+    // Draw T shape
+    int t_thick = 4;
+    int t_w = start_size - 8;
+    int t_h = start_size - 8;
+    int t_x = 5 + 4;
+    int t_y = y + 5 + 4;
+    // Top bar
+    draw_rect_px(t_x, t_y, t_w, t_thick, COLOR_NEON_BLUE);
+    // Vertical bar
+    draw_rect_px(t_x + (t_w - t_thick)/2, t_y, t_thick, t_h, COLOR_NEON_BLUE);
 
+    // Glowing App Icons
     int center_x = g_width / 2;
     int icon_size = height - 15;
     int icon_spacing = icon_size + 10;
-    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x, y + 5, icon_size, icon_size, 0xFF4080FF);
-    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, 0xFF4080FF);
+    uint32_t glow_col = 0x6000E5FF;
+    uint32_t icon_col = 0xFF4080FF;
 
-    draw_rect_px(g_width - 30, g_height - 30, 20, 20, COLOR_RED);
-    draw_string_px("S", g_width - 25, g_height - 28, COLOR_WHITE);
+    // Icon 1
+    draw_rect_alpha(center_x - icon_spacing - 2, y + 3, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x - icon_spacing, y + 5, icon_size, icon_size, icon_col);
 
-    draw_rect_px(g_width - 60, g_height - 30, 20, 20, COLOR_YELLOW);
-    draw_string_px("R", g_width - 55, g_height - 28, COLOR_BLACK);
+    // Icon 2 (Active)
+    draw_rect_alpha(center_x - 2, y + 3, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x, y + 5, icon_size, icon_size, icon_col);
+    draw_rect_px(center_x + icon_size/2 - 2, y + height - 4, 4, 2, 0xFFFFFFFF); // Active indicator
+
+    // Icon 3
+    draw_rect_alpha(center_x + icon_spacing - 2, y + 3, icon_size + 4, icon_size + 4, glow_col);
+    draw_rect_px(center_x + icon_spacing, y + 5, icon_size, icon_size, icon_col);
+
+    // Show Desktop Sliver
+    draw_rect_alpha(g_width - 6, y, 6, height, COLOR_GLASS_WHITE);
+    draw_line(g_width - 6, y, g_width - 6, y + height, 0x80FFFFFF); // Separator
 }
 
 void draw_wallpaper() {
@@ -348,9 +389,26 @@ void draw_top_bar() {
     int time_width = strlen(time) * 8;
     draw_string_px(time, (g_width - time_width)/2, text_y, COLOR_TOP_BAR_TEXT);
 
-    char* tray = "WF BT PWR";
-    int tray_width = strlen(tray) * 8;
-    draw_string_px(tray, g_width - tray_width - 10, text_y, COLOR_TOP_BAR_TEXT);
+    int icon_y = (height - 12) / 2;
+    int right_x = g_width - 20;
+
+    // Power Icon (Circle with line)
+    draw_circle(right_x, icon_y + 6, 5, COLOR_TOP_BAR_TEXT, 0); // Outline circle
+    draw_line(right_x, icon_y + 1, right_x, icon_y + 6, COLOR_TOP_BAR_TEXT); // Vertical line
+    right_x -= 30;
+
+    // Battery Icon (Rect with tip)
+    draw_rect_px(right_x, icon_y + 2, 20, 10, COLOR_TOP_BAR_TEXT); // Outline
+    draw_rect_px(right_x + 1, icon_y + 3, 18, 8, COLOR_BLACK); // Inner
+    draw_rect_px(right_x + 2, icon_y + 4, 12, 6, COLOR_GREEN); // Fill (75%)
+    draw_rect_px(right_x + 20, icon_y + 4, 2, 6, COLOR_TOP_BAR_TEXT); // Tip
+    right_x -= 30;
+
+    // Wi-Fi Icon (Bars)
+    int bar_w = 3;
+    draw_rect_px(right_x, icon_y + 8, bar_w, 4, COLOR_TOP_BAR_TEXT);
+    draw_rect_px(right_x + 6, icon_y + 4, bar_w, 8, COLOR_TOP_BAR_TEXT);
+    draw_rect_px(right_x + 12, icon_y, bar_w, 12, COLOR_TOP_BAR_TEXT);
 }
 
 void draw_window_modern(int x, int y, int w, int h, const char* title) {
