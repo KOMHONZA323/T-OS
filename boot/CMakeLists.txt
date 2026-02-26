@@ -1,21 +1,30 @@
 cmake_minimum_required(VERSION 3.10)
 project(boot C)
 
-# Includes
-include_directories(/usr/include/efi)
-include_directories(/usr/include/efi/x86_64)
-include_directories(/usr/include/efi/protocol)
+# Ensure CMake finds our variables. If not provided by toolchain (when running without it), set defaults
+if(NOT EFI_LDS)
+    set(EFI_LDS "/usr/lib/elf_x86_64_efi.lds")
+    set(EFI_CRT0 "/usr/lib/crt0-efi-x86_64.o")
+    set(EFI_LIB_DIR "/usr/lib")
+endif()
 
-# Compiler flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fpic -fshort-wchar -mno-red-zone -I/usr/include/efi -I/usr/include/efi/x86_64 -DEFI_FUNCTION_WRAPPER")
+# We don't need to add include_directories manually if the toolchain did it.
+# But just in case, or if the user is not using the toolchain file:
+if(DEFINED EFI_INCLUDE_DIR)
+    include_directories(${EFI_INCLUDE_DIR})
+endif()
+if(DEFINED EFI_ARCH_INCLUDE_DIR)
+    include_directories(${EFI_ARCH_INCLUDE_DIR})
+endif()
+if(DEFINED EFI_PROTOCOL_INCLUDE_DIR)
+    include_directories(${EFI_PROTOCOL_INCLUDE_DIR})
+endif()
+
+# Compiler flags are set by toolchain, but we can append specific warnings
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
 # Object library for main.c
 add_library(boot_obj OBJECT src/main.c)
-
-# Variables
-set(EFI_LDS "/usr/lib/elf_x86_64_efi.lds")
-set(EFI_CRT0 "/usr/lib/crt0-efi-x86_64.o")
-set(EFI_LIB_DIR "/usr/lib")
 
 # Custom command to link using ld directly to avoid gcc's -fPIC enforcement during link
 add_custom_command(OUTPUT boot.so
