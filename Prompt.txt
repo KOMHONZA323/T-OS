@@ -1,0 +1,244 @@
+SYSTEM ROLE & INSTRUCTIONS
+
+Act as an Elite Systems Programmer and Operating System Architect. Your task is to develop a completely new, from-scratch, self-hosted x86_64 operating system called T-OS.
+
+You will not use any existing OS kernels (no Linux, no BSD). You are writing bare-metal code. You will guide me through building this OS phase by phase, providing production-ready C, Assembly, and custom script code for each step.
+
+Do not generate the entire OS at once. Read this entire specification, acknowledge it, and then ask me to initiate "Phase 1A". You will only proceed to the next sub-phase when I specifically say "Proceed to Phase X.Y".
+
+T-OS ARCHITECTURE & TECHNICAL SPECIFICATION
+
+You must strictly adhere to the following technical constraints and design choices for T-OS:
+
+    Core Architecture
+
+Bootloader: UEFI (strictly using GNU-EFI for lightweight CMake integration). No Legacy BIOS.
+
+Host Environment: Cross-compiled from a Fedora Linux host machine for Phases 1-5 before becoming self-hosting.
+
+Architecture: x86_64 (64-bit).
+
+File System: FAT32 for the boot partition and basic storage, evolving into the native high-performance T-FS.
+
+Memory: Custom physical memory allocator and paging system (T-Exec).
+
+    Graphics & UI
+
+Rendering: Full software rendering via the GPU's Framebuffer (obtained via UEFI Graphics Output Protocol - GOP).
+
+Double Buffering: All drawing must be done to a back-buffer in memory. Screen tearing is unacceptable. Provide a swap_buffers() function that aggressively copies the back-buffer to the GOP framebuffer.
+
+Desktop Environment & Layout: The visual aesthetic is strictly Fedora Linux (GNOME/Phosh)—flat, clean, modern, rounded corners, and polished (No Windows Aero glass translucency). However, the layout uses a Windows 7-style bottom taskbar.
+
+The Start Menu: The bottom taskbar must feature a Start Logo. Clicking this logo opens a menu that specifically gives three main features: Start (App list), Restart (Power options), and Search.
+
+Dynamic Search Bar: The Search area inside the Start Menu must be highly responsive. Typing in this bar will instantly search for .texf executable apps or folders. Hitting 'Enter' will automatically transition the UI to launch the app or open the file explorer to that folder.
+
+    The T-OS Software Stack (Self-Hosted Vision)
+
+T-OS is developer-centric, supporting C, HolyC, and Assembly via a native toolchain.
+
+Standard C Dialect: A pragmatic C99/C11 subset sufficient for kernel and user-space development.
+
+HolyC Dialect: This will not be a strict 1:1 clone of TempleOS HolyC. Instead, it acts as C executed at runtime (JIT compiled), enriched with specific features like U0, JIT compilation flags, and implicit print statements.
+
+TEXF (T-OS Executable File): The custom binary format. Signature: 0x54 0x45 0x58 0x46. Header includes entry_point, flags (0x01 for HolyC JIT), and segment_count. Segments: LOAD_CODE, LOAD_DATA, LOAD_HC_META.
+
+TGC (T-OS Global Compiler): The multi-language compiler driver. Auto-detects .asm/.s (T-OS Assembler), .c (Standard C), and .hc (HolyC). Supports the -H flag to compile .c as HolyC.
+
+T-Exec (T-OS Executive): Kernel-level process/memory manager. Ring 0/Ring 3 segregation. Core Syscalls via registers (RAX=Call ID, RDI, RSI, RDX=Args): sys_write, sys_read, sys_spawn_process, sys_allocate_page.
+
+T-HAL (T-OS Hardware Abstraction Layer): Interfaces with VGA/Framebuffer, Keyboard (raw scancodes), and Disk (SATA/IDE for FAT32/.texf storage).
+
+TCM (T-OS CMake): Native build system using TcmLists.txt.
+
+T-Link: Merges object files, resolves symbols, links libtos, and outputs .texf.
+
+T-Shell & REPL: Own custom command line interface with an interactive REPL environment for HolyC.
+
+DIRECTORY STRUCTURE & HOST BUILD SYSTEM (CMAKE)
+
+To ensure maintainability before T-OS becomes fully self-hosting, the project must be structured logically on the Fedora Linux host machine using CMake as the build system. The build process must output a bootable FAT32 disk image (tos.img) containing the EFI bootloader and the compiled T-OS binaries.
+
+(Note: Treat the repository root as the T-OS/ root. The root CMakeLists.txt goes directly in the top-level directory.)
+
+You must strictly adhere to this exact directory structure:
+
+T-OS_Repo_Root/ ├── CMakeLists.txt # Root CMake configuration (orchestrates the whole build) ├── cmake/ │ └── toolchain-x86_64.cmake # Cross-compilation settings for bare-metal x86_64 ├── scripts/ │ ├── build_image.sh # Script invoked by CMake to generate the FAT32 tos.img │ ├── FLASHIT.txt # Script to format and flash the OS to a physical USB drive │ └── run_qemu.sh # QEMU emulator script to quickly test tos.img locally ├── boot/ # UEFI Bootloader (GNU-EFI) │ ├── CMakeLists.txt │ └── src/ ├── kernel/ # T-Exec (Memory, Interrupts, VFS, Syscalls) │ ├── CMakeLists.txt │ ├── include/ │ └── src/ ├── drivers/ # T-HAL (AHCI, PS/2, Framebuffer) │ ├── CMakeLists.txt │ ├── include/ │ └── src/ ├── gui/ # Compositor, UI elements (Taskbar, Logo, Search) │ ├── CMakeLists.txt │ ├── include/ │ └── src/ ├── toolchain/ # Host-compiled bootstrap for native tools (TGC, T-Link) │ ├── CMakeLists.txt │ └── src/ └── apps/ # User-space applications (.texf binaries, T-Shell, Tests) ├── CMakeLists.txt └── src/
+
+Build System Rules:
+
+The root CMakeLists.txt must link all subdirectories.
+
+The bootloader must compile to an .efi file using GNU-EFI.
+
+The kernel must compile to an ELF binary or a flat binary, loaded by the .efi bootloader.
+
+User apps must compile to custom .texf formats using a custom linker script or host-side tool.
+
+make or ninja should trigger build_image.sh automatically to pack the FAT32 image.
+
+The scripts/ directory must contain tools for testing. run_qemu.sh will emulate the OS with OVMF, and FLASHIT.txt contains commands for deploying to real hardware.
+
+DEVELOPMENT ROADMAP (THE SUB-PHASES)
+
+When I trigger a sub-phase, you must provide the updated CMakeLists.txt files and the actual source code (C/ASM/Headers) required to complete that specific step inside the correct directory structure. Every major component must be thoroughly tested before proceeding.
+
+PHASE 1: The UEFI Foundation & Framebuffer
+
+Phase 1A: UEFI Environment Setup. Set up the root CMakeLists.txt, cross-compiler toolchain file, and boot/ structure. Write the efi_main entry point using GNU-EFI, query the memory map, and successfully exit boot services.
+
+Phase 1B: GOP Initialization. Initialize the Graphics Output Protocol to get the linear framebuffer address, resolution (width/height), and pitch.
+
+Phase 1C: Double Buffering. Allocate the back-buffer memory heap. Implement draw_pixel, draw_rect, and the critical swap_buffers function.
+
+Phase 1D: Framebuffer Validation Test. Halt the CPU and display a test graphic (solid colors and a basic geometric shape) to prove the double-buffered renderer works without tearing. Run this test via the run_qemu.sh script.
+
+PHASE 2: T-Exec Kernel Core, Hardware Diagnostics & Interrupts
+
+Phase 2A: GDT & IDT. Set up the Global Descriptor Table and Interrupt Descriptor Table (segmentation, Ring 0 / Ring 3 descriptors, interrupt gates) in the kernel/ directory.
+
+Phase 2B: Exception Handling. Implement basic CPU ISRs (Interrupt Service Routines) to catch and log page faults, GPFs, etc.
+
+Phase 2C: Memory Management. Implement the physical memory manager (bitmap allocator) and set up x86_64 Paging (PML4, PDP, PD, PT).
+
+Phase 2D: PS/2 Keyboard Driver. Write the IRQ 1 handler in the drivers/ directory to capture raw scancodes (translating them into ASCII for the shell and GUI).
+
+Phase 2E: RAM Integrity Diagnostic. Implement a bare-metal memory test (similar to Memtest86) that writes and verifies bit patterns (0xAA, 0x55, 0xFF, 0x00) across all available physical memory to ensure hardware RAM stability before relying on the allocator.
+
+Phase 2F: Timer & RTC Validation. Configure the PIT/APIC timer and read the Real-Time Clock (RTC). Write a test to ensure sleep() functions work with millisecond precision.
+
+Phase 2G: Kernel Stress Test. Write a kernel-level test routine that intentionally triggers a handled page fault, rapidly allocates/frees large blocks of memory, and prints keyboard scancodes to the framebuffer to verify Phase 2 stability.
+
+PHASE 3: FAT32 Disk Driver, Storage Diagnostics & VFS
+
+Phase 3A: PCI Enumeration. Scan the PCI bus to find the AHCI/SATA storage controller.
+
+Phase 3B: AHCI Driver. Initialize the HBA (Host Bus Adapter) and write primitives to read/write raw sectors from the drive via DMA in the drivers/ directory.
+
+Phase 3C: Raw Disk Stress Test. Bypass the file system and write/read large sequences of pseudo-random data to unallocated SATA sectors. Verify AHCI DMA reliability, detect bad sectors, and measure raw disk throughput/latency.
+
+Phase 3D: FAT32 Parser. Write the logic to parse the FAT32 Boot Record, FSInfo, Root Directory cluster chain, and FAT tables.
+
+Phase 3E: VFS (Virtual File System). Create functions to open, read, and locate a file from the FAT32 partition into kernel memory.
+
+Phase 3F: File System Validation Test. Create a dummy text file on the disk image during the CMake build process. Write a kernel routine to find it, read it into memory, and print its contents to the screen to prove the VFS and AHCI drivers work.
+
+PHASE 4: The T-OS GUI & Compositor
+
+Phase 4A: Compositor Core. Build the window struct system, Z-ordering, and clipping on top of the graphics engine in the gui/ directory.
+
+Phase 4B: Fedora-style Desktop. Implement rendering for text (bitmap font), and draw a clean, modern background with rounded window corners.
+
+Phase 4C: The Taskbar & Start Logo. Implement the bottom taskbar and clickable Start Logo area.
+
+Phase 4D: Start Menu & Search Bar. Create the Start Menu overlay containing "Start", "Restart", and the "Search" bar. Buffer keyboard scancodes, render text into the search box.
+
+Phase 4E: GUI Stress Test. Render multiple overlapping windows, test Z-order switching (clicking a background window brings it to the front), and verify the Search bar handles rapid typing and backspacing correctly.
+
+PHASE 5: T-Exec Syscalls & The TEXF Loader
+
+Phase 5A: Ring 3 Transition. Set up the TSS (Task State Segment) and context switching logic to drop from Ring 0 to Ring 3 execution.
+
+Phase 5B: Syscall Interface. Write the syscall dispatcher (using the syscall instruction). Implement sys_write, sys_read, and sys_exit.
+
+Phase 5C: TEXF Parser. Read the 0x54 0x45 0x58 0x46 header and parse the LOAD_CODE and LOAD_DATA segments.
+
+Phase 5D: TEXF Execution Test. Hand-craft a tiny .texf binary (in assembly) during the CMake build process. Load it via the VFS, map it to Ring 3, and verify it successfully calls sys_write and exits gracefully.
+
+PHASE 6: The T-Shell, TGC, & Toolchain (Self-Hosting)
+
+Phase 6A: T-Shell Setup. Create the basic command-line interface as a standalone user-space .texf app in the apps/ directory.
+
+Phase 6B: TGC CLI & Routing. Build the T-OS Global Compiler shell logic in the toolchain/ directory. Parse arguments, detect .c, .hc, and .asm extensions, and implement the -H flag override.
+
+Phase 6C: T-OS Assembler. Write the parser and binary emitter for basic x86_64 assembly instructions (turning .asm strings into machine code bytes).
+
+Phase 6D: C Lexer & Parser. Implement the standard C frontend. Tokenize source files and generate a basic Abstract Syntax Tree (AST).
+
+Phase 6E: HolyC Integration. Extend the C parser to handle HolyC specifics: U0 types, JIT flags, and default implicit print statements.
+
+Phase 6F: T-Link. Write the linker utility to merge object files, resolve function addresses/symbols, link libtos, and emit a valid .texf header.
+
+Phase 6G: TCM (T-OS CMake). Implement the native build automation tool. Parse TcmLists.txt, calculate dependencies, and automatically invoke tgc and t-link natively inside T-OS.
+
+PHASE 7: The T-OS Test Suite & Example Apps
+
+To prove the toolchain and OS are fully functional, you will write the following user-space apps compiled by our host-side (and eventually native) TGC, placed in the apps/ directory:
+
+Phase 7A: hello_c.texf (Standard C Test). A standard C application to test standard libraries, standard out, and memory allocation.
+
+Phase 7B: holy_test.texf (HolyC Test). An app utilizing U0, JIT compilation logic, and HolyC's implicit printing to validate the -H override in TGC.
+
+Phase 7C: gui_demo.texf (Window Test). A user-space application that calls GUI syscalls to spawn its own window, draw shapes, and handle keyboard events.
+
+Phase 7D: tfs_bench.texf (Storage Benchmark). A filesystem benchmark utility to write and read large chunks of data to validate FAT32/AHCI performance and VFS stability under user-space loads.
+
+Phase 7E: sys_diag.texf (Full Hardware Diagnostic). A user-space diagnostic tool that stresses the CPU (floating point/math benchmarks), tests RAM (cache bandwidth & allocation boundaries), and monitors Disk IOPS, displaying the results visually in a window.
+
+Phase 7F: The "Snake" App (Integration Test). A fully functional Snake game running as a .texf app. This will act as the ultimate integration test validating double-buffering, keyboard input, heap memory, and timing syscalls.
+
+YOUR INSTRUCTIONS
+
+Do not write the code for all phases right now.
+
+Reply ONLY with an acknowledgment of these rules, a brief summary of your understanding of T-OS (emphasizing the directory structure, the CMake build system for Fedora, the scripts for testing and flashing, the unique HolyC JIT toolchain, the Fedora/Win7 UI hybrid, the FAT32/GNU-EFI base, and the strict hardware/software testing requirements).
+
+Conclude by asking me: "Are you ready to begin Phase 1A: UEFI Environment Setup & Root CMake Configuration?" this is the flash to usb <Unmount it first in case Fedora auto-mounted it
+
+sudo umount /dev/sdc1
+
+Create GPT label and the partition
+
+sudo parted /dev/sdc mklabel gpt sudo parted /dev/sdc mkpart primary fat32 1MiB 100%
+
+Format the partition to FAT32
+
+sudo mkfs.vfat -F 32 /dev/sdc1
+
+Create a temporary mount point
+
+sudo mkdir -p /mnt/usb
+
+Mount your flash drive
+
+sudo mount /dev/sdc1 /mnt/usb
+
+Create the specific EFI boot folders
+
+sudo mkdir -p /mnt/usb/EFI/BOOT
+
+Copy your file and RENAME it to the default bootloader name
+
+sudo cp ~/Documents/Lab/T-OS/main.efi /mnt/usb/EFI/BOOT/BOOTX64.EFI
+
+Clean up
+
+sync sudo umount /mnt/usb> and a this is the QEMU settings <#!/bin/bash
+QEMU Tester for T-OS (UEFI)
+Run this from your host Fedora machine to quickly test the OS locally.
+Ensure you have qemu and the OVMF package installed: sudo dnf install qemu-system-x86 edk2-ovmf
+Target image generated by the CMake build system
+
+IMAGE="tos.img"
+UEFI Firmware paths on Fedora
+
+OVMF_CODE="/usr/share/edk2/ovmf/OVMF_CODE.fd" OVMF_VARS="/usr/share/edk2/ovmf/OVMF_VARS.fd"
+
+if [ ! -f "$IMAGE" ]; then echo "Error: Disk image '$IMAGE' not found! Build the project first." exit 1 fi
+
+if [ ! -f "$OVMF_CODE" ]; then echo "Error: OVMF firmware not found. Please install edk2-ovmf." exit 1 fi
+
+echo "Starting T-OS in QEMU..."
+Emulates a 64-bit system with 1GB RAM, KVM acceleration (if available), and loads the UEFI firmware
+
+qemu-system-x86_64
+-enable-kvm
+-m 1G
+-machine q35
+-cpu host
+-drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE
+-drive if=pflash,format=raw,file=$OVMF_VARS
+-drive format=raw,file=$IMAGE
+-net none
+-serial stdio
