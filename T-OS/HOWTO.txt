@@ -1,0 +1,43 @@
+T-OS DEVELOPMENT GUIDE (v0.1 Alpha A)
+=====================================
+
+1. WRITING C CODE (.c)
+----------------------
+Use the TGO editor: 'tgo prog.c'
+Standard C follows basic syntax. T-OS includes 'print(val)' and 'getchar()'.
+Example:
+    int main() {
+        int x = 10;
+        print("Value is: ");
+        print(x);
+        return 0;
+    }
+Compile with: 'tgc prog.c'
+Run with: 'run progxf'
+
+2. WRITING HOLYC CODE (.hc)
+---------------------------
+HolyC is "C with wings". No 'main' or parentheses required for JIT scripts.
+Example:
+    U0 MyFunc() {
+        "Hello from HolyC!
+";
+    }
+    MyFunc;
+Compile/JIT with: 'tgc -H prog.hc'
+
+3. WRITING ASSEMBLY (.asm)
+--------------------------
+T-OS uses Intel Syntax. Use the 'asm' command for quick encoding.
+Example:
+    asm mov rax, 42
+    asm ret
+
+4. SYSTEM COMMANDS
+------------------
+ls       - List directory
+cd <dir> - Change directory
+mkdir    - Create directory
+pstree   - View process hierarchy
+about    - System information
+shutdown - Power off

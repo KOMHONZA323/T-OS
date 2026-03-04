@@ -1,11 +1,24 @@
+# T-OS Build Artifacts
 build/
-
+bin/
 *.bin
-*.vdi
-*.iso
+*.efi
+*.img
+*.so
+*.o
+*.xf
 
-# Ignore CMake cache files if you ran cmake in the root by accident
+# Logs
+*.log
+headless_log.txt
+
+# Editor / IDE
+.cursor/
+.vscode/
+
+# CMake artifacts
 CMakeFiles/
 CMakeCache.txt
 Makefile
 cmake_install.cmake
+install_manifest.txt

@@ -8,8 +8,8 @@ set(CMAKE_ASM_COMPILER gcc)
 
 # Don't search for programs in the host environment
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 
 # GNU-EFI paths: Search in common locations (Debian/Ubuntu, Fedora, Arch)
 find_path(EFI_INCLUDE_DIR efi.h
