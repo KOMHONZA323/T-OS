@@ -7,7 +7,6 @@ Status: Completed Phase A (UEFI, Shell, TGC, TGO)
 PROJECT STRUCTURE:
 ------------------
 /T-OS   - Core Operating System source, bootloader, and toolchain.
-/NEW    - Reference working UEFI implementation.
 
 BUILDING & RUNNING:
 -------------------
