@@ -79,6 +79,99 @@ struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
     SIMPLE_TEXT_OUTPUT_MODE *Mode;
 };
 
+// Text Attribute Constants
+#define EFI_BLACK         0x00
+#define EFI_BLUE          0x01
+#define EFI_GREEN         0x02
+#define EFI_CYAN          0x03
+#define EFI_RED           0x04
+#define EFI_MAGENTA       0x05
+#define EFI_BROWN         0x06
+#define EFI_LIGHTGRAY     0x07
+#define EFI_DARKGRAY      0x08
+#define EFI_LIGHTBLUE     0x09
+#define EFI_LIGHTGREEN    0x0A
+#define EFI_LIGHTCYAN     0x0B
+#define EFI_LIGHTRED      0x0C
+#define EFI_LIGHTMAGENTA  0x0D
+#define EFI_YELLOW        0x0E
+#define EFI_WHITE         0x0F
+
+#define EFI_TEXT_ATTRIBUTE(Foreground, Background) ((Foreground) | ((Background) << 4))
+
+// Graphics Output Protocol
+typedef struct _EFI_GRAPHICS_OUTPUT_PROTOCOL EFI_GRAPHICS_OUTPUT_PROTOCOL;
+
+typedef enum {
+  PixelRedGreenBlueReserved8BitPerColor,
+  PixelBlueGreenRedReserved8BitPerColor,
+  PixelBitMask,
+  PixelBltOnly,
+  PixelFormatMax
+} EFI_GRAPHICS_PIXEL_FORMAT;
+
+typedef struct {
+  UINT32 RedMask;
+  UINT32 GreenMask;
+  UINT32 BlueMask;
+  UINT32 ReservedMask;
+} EFI_PIXEL_BITMASK;
+
+typedef struct {
+  UINT32                     Version;
+  UINT32                     HorizontalResolution;
+  UINT32                     VerticalResolution;
+  EFI_GRAPHICS_PIXEL_FORMAT  PixelFormat;
+  EFI_PIXEL_BITMASK          PixelInformation;
+  UINT32                     PixelsPerScanLine;
+} EFI_GRAPHICS_OUTPUT_MODE_INFORMATION;
+
+typedef struct {
+    UINT32 MaxMode;
+    UINT32 Mode;
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
+    UINTN FrameBufferBase;
+    UINTN FrameBufferSize;
+} EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
+
+// Function pointer typedefs must come before the struct that uses them
+typedef EFI_STATUS (EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE) (
+    EFI_GRAPHICS_OUTPUT_PROTOCOL  *This,
+    UINT32                                ModeNumber,
+    UINTN                                 *SizeOfInfo,
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION  **Info
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE) (
+    EFI_GRAPHICS_OUTPUT_PROTOCOL  *This,
+    UINT32                                ModeNumber
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_BLT) (
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *This,
+    void                                 *BltBuffer,
+    UINTN                                BltOperation,
+    UINTN                                SourceX,
+    UINTN                                SourceY,
+    UINTN                                DestinationX,
+    UINTN                                DestinationY,
+    UINTN                                Width,
+    UINTN                                Height,
+    UINTN                                Delta
+);
+
+struct _EFI_GRAPHICS_OUTPUT_PROTOCOL { // Use struct here for the actual definition
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE  QueryMode;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE    SetMode;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_BLT         Blt;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE        *Mode;
+};
+
+#define EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID \
+  { \
+    0x9042a9de, 0x23dc, 0x4a38, {0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a } \
+  }
+
 typedef struct {
     UINT64 Signature;
     UINT32 Revision;
@@ -160,7 +253,7 @@ typedef struct {
     void *UnloadImage;
     void *ExitBootServices;
     void *GetNextMonotonicCount;
-    void *Stall;
+    EFI_STATUS (EFIAPI *Stall)(UINTN Microseconds);
     void *SetWatchdogTimer;
     void *ConnectController;
     void *DisconnectController;
@@ -192,6 +285,7 @@ typedef struct {
     EFI_BOOT_SERVICES *BootServices;
 } EFI_SYSTEM_TABLE;
 
+// Forward declaration for EFI_FILE_PROTOCOL
 typedef struct _EFI_FILE_PROTOCOL EFI_FILE_PROTOCOL;
 
 typedef EFI_STATUS (EFIAPI *EFI_FILE_OPEN)(EFI_FILE_PROTOCOL *This, EFI_FILE_PROTOCOL **NewHandle, CHAR16 *FileName, UINT64 OpenMode, UINT64 Attributes);

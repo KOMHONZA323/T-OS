@@ -1,7 +1,61 @@
 #include "uefi.h"
 
+// Match the struct from kernel.c
+typedef struct {
+    uint64_t fb_base;
+    uint64_t fb_size;
+    uint32_t fb_width;
+    uint32_t fb_height;
+    uint32_t fb_pitch; // This is PixelsPerScanLine
+} BootInfo;
+
 EFI_SYSTEM_TABLE *ST;
 EFI_HANDLE ImgHandle;
+BootInfo global_boot_info;
+
+// A simple 8x8 font
+static uint8_t font[128][8] = {
+    // Basic characters for "SUCCESS", "BOOT" and "PANIC"
+    [0x41] = {0x18, 0x3c, 0x66, 0x66, 0x7e, 0x66, 0x66, 0}, // A
+    [0x42] = {0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e, 0}, // B
+    [0x43] = {0x3c, 0x66, 0x06, 0x06, 0x06, 0x66, 0x3c, 0}, // C
+    [0x4f] = {0x3c, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3c, 0}, // O
+    [0x4e] = {0x66, 0x76, 0x7e, 0x6e, 0x66, 0x66, 0x66, 0}, // N
+    [0x49] = {0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e, 0}, // I
+    [0x50] = {0x7e, 0x66, 0x66, 0x7e, 0x06, 0x06, 0x06, 0}, // P
+    [0x53] = {0x3c, 0x66, 0x06, 0x3c, 0x60, 0x66, 0x3c, 0}, // S
+    [0x54] = {0x7e, 0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0}, // T
+    [0x55] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x3e, 0x3c, 0}, // U
+};
+
+void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, int scale) {
+    if (global_boot_info.fb_base == 0 || c > 127) return;
+    uint32_t* fb = (uint32_t*)global_boot_info.fb_base;
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            if ((font[(uint8_t)c][i] >> j) & 1) {
+                for (int k = 0; k < scale; k++) {
+                    for (int l = 0; l < scale; l++) {
+                        uint32_t px = x + (8 - j - 1) * scale + k;
+                        uint32_t py = y + i * scale + l;
+                        if (px < global_boot_info.fb_width && py < global_boot_info.fb_height) {
+                            fb[py * global_boot_info.fb_pitch + px] = color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void draw_string(const char* s, uint32_t x, uint32_t y, uint32_t color, int scale) {
+    while (*s) {
+        draw_char(*s, x, y, color, scale);
+        x += 8 * scale;
+        s++;
+    }
+}
 
 typedef enum { PROC_RUNNING, PROC_EXITED } ProcStatus;
 typedef struct Process {
@@ -278,10 +332,44 @@ void cmd_about() {
     print((CHAR16*)L" Target: x86_64 UEFI\r\n\r\n");
 }
 
+void cmd_panic() {
+    if (global_boot_info.fb_base != 0) {
+        // Clear screen to red for panic
+        uint32_t* fb = (uint32_t*)global_boot_info.fb_base;
+        for (uint32_t i = 0; i < global_boot_info.fb_size / 4; i++) {
+            fb[i] = 0x00FF0000; // Red color
+        }
+
+        uint32_t screen_center_x = global_boot_info.fb_width / 2;
+        uint32_t screen_center_y = global_boot_info.fb_height / 2;
+        
+        uint32_t panic_len = 5 * 8 * 5; // 5 chars, 8 pixels wide, 5x scale
+        draw_string("PANIC", screen_center_x - panic_len / 2, screen_center_y, 0xFFFFFFFF, 5); // White text
+        
+        // Wait for a key press before returning to console
+        print((CHAR16*)L"\r\nPress any key to return to shell...");
+        UINTN idx; EFI_INPUT_KEY k;
+        ST->BootServices->WaitForEvent(1, &ST->ConIn->WaitForKey, &idx);
+        ST->ConIn->ReadKeyStroke(ST->ConIn, &k); // Consume the key press
+
+        // Clear screen and reset console attributes
+        ST->ConOut->ClearScreen(ST->ConOut);
+        ST->ConOut->SetAttribute(ST->ConOut, EFI_TEXT_ATTRIBUTE(EFI_LIGHTGRAY, EFI_BLACK));
+        ST->ConOut->SetCursorPosition(ST->ConOut, 0, 0);
+    } else {
+        print((CHAR16*)L"Graphics not available for panic display.\r\n");
+    }
+}
+
+void delay_ms(UINTN milliseconds) {
+    // UEFI Stall is in microseconds, so multiply by 1000
+    ST->BootServices->Stall(milliseconds * 1000);
+}
+
 void execute_command(CHAR16 *cmd) {
     if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
     char acmd[256]; for(int i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; }
-    if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown\r\n");
+    if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();
     else if(strcmp16(cmd,(CHAR16*)L"ls")==0) cmd_ls();
     else if(strncmp16(cmd,(CHAR16*)L"cd ",3)==0) cmd_cd(&cmd[3]);
@@ -292,12 +380,40 @@ void execute_command(CHAR16 *cmd) {
     else if(strncmp16(cmd,(CHAR16*)L"asm ",4)==0) cmd_asm(&acmd[4]);
     else if(strcmp16(cmd,(CHAR16*)L"pstree")==0) print_pstree(&proc_table[0],0);
     else if(strcmp16(cmd,(CHAR16*)L"shutdown")==0) ST->RuntimeServices->ResetSystem(EfiResetShutdown,EFI_SUCCESS,0,NULL);
+    else if(strcmp16(cmd,(CHAR16*)L"panic")==0) cmd_panic();
     else print((CHAR16*)L"Unknown command.\r\n");
     p->status=PROC_EXITED;
 }
 
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     ST=SystemTable; ImgHandle=ImageHandle; current_proc=create_process(NULL,(CHAR16*)L"t-shell"); get_root(&cwd);
+
+    // Get Graphics Output Protocol
+    EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
+    ST->BootServices->LocateProtocol(&gop_guid, NULL, (void**)&gop);
+
+    if (gop) {
+        // Assuming the first mode is good enough
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info;
+        UINTN SizeOfInfo;
+        gop->QueryMode(gop, gop->Mode->Mode, &SizeOfInfo, &info);
+
+        global_boot_info.fb_base = gop->Mode->FrameBufferBase;
+        global_boot_info.fb_size = gop->Mode->FrameBufferSize;
+        global_boot_info.fb_width = info->HorizontalResolution;
+        global_boot_info.fb_height = info->VerticalResolution;
+        global_boot_info.fb_pitch = info->PixelsPerScanLine;
+        ST->BootServices->FreePool(info);
+    } else {
+        // Fallback or error handling if GOP is not available
+        global_boot_info.fb_base = 0;
+        global_boot_info.fb_size = 0;
+        global_boot_info.fb_width = 0;
+        global_boot_info.fb_height = 0;
+        global_boot_info.fb_pitch = 0;
+    }
+    
     ST->ConOut->ClearScreen(ST->ConOut); ST->ConOut->EnableCursor(ST->ConOut,TRUE);
     cmd_about();
     print((CHAR16*)L"Welcome to T-OS! Type 'help' for commands.\r\n");

@@ -12,10 +12,14 @@ typedef struct {
 // A simple 8x8 font
 static uint8_t font[128][8] = {
     // Basic characters for "SUCCESS"
+    [0x41] = {0x18, 0x3c, 0x66, 0x66, 0x7e, 0x66, 0x66, 0}, // A
     [0x42] = {0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e, 0}, // B
     [0x43] = {0x3c, 0x66, 0x06, 0x06, 0x06, 0x66, 0x3c, 0}, // C
     [0x45] = {0x7e, 0x06, 0x06, 0x3e, 0x06, 0x06, 0x7e, 0}, // E
+    [0x49] = {0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e, 0}, // I
+    [0x4e] = {0x66, 0x76, 0x7e, 0x6e, 0x66, 0x66, 0x66, 0}, // N
     [0x4f] = {0x3c, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3c, 0}, // O
+    [0x50] = {0x7e, 0x66, 0x66, 0x7e, 0x06, 0x06, 0x06, 0}, // P
     [0x53] = {0x3c, 0x66, 0x06, 0x3c, 0x60, 0x66, 0x3c, 0}, // S
     [0x54] = {0x7e, 0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0}, // T
     [0x55] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x3e, 0x3c, 0}, // U
@@ -50,6 +54,34 @@ void draw_string(BootInfo* bi, const char* s, uint32_t x, uint32_t y, uint32_t c
     }
 }
 
+void delay(uint64_t milliseconds) {
+    // This is a very crude delay and depends on CPU speed.
+    // A more accurate delay would require a timer interrupt.
+    volatile uint64_t i;
+    for (i = 0; i < milliseconds * 1000000; i++) {
+        __asm__ __volatile__("nop");
+    }
+}
+
+void kpanic(BootInfo* bi) {
+    uint32_t* fb = (uint32_t*)bi->fb_base;
+
+    // Clear screen to red for panic
+    for (uint32_t i = 0; i < bi->fb_size / 4; i++) {
+        fb[i] = 0x00FF0000; // Red color
+    }
+
+    if (bi->fb_base != 0 && bi->fb_width > 0 && bi->fb_height > 0) {
+        uint32_t screen_center_x = bi->fb_width / 2;
+        uint32_t screen_center_y = bi->fb_height / 2;
+        
+        uint32_t panic_len = 5 * 8 * 5; // 5 chars, 8 pixels wide, 5x scale
+        draw_string(bi, "PANIC", screen_center_x - panic_len / 2, screen_center_y, 0xFFFFFFFF, 5); // White text
+    }
+
+    while(1) { __asm__ __volatile__("hlt"); }
+}
+
 void kmain(BootInfo* bi) {
     uint32_t* fb = (uint32_t*)bi->fb_base;
 
@@ -71,7 +103,13 @@ void kmain(BootInfo* bi) {
         uint32_t success_len = 7 * 8 * 5; // 7 chars
         draw_string(bi, "SUCCESS", screen_center_x - success_len / 2, screen_center_y, 0xFF00FF00, 5);
     }
+    
+    // Delay for 10 seconds (approximate)
+    delay(10000); // 10000 milliseconds = 10 seconds
 
-    // Halt the system
+    // Trigger panic
+    kpanic(bi);
+
+    // This part should not be reached after kpanic
     while(1) { __asm__ __volatile__("hlt"); }
 }
