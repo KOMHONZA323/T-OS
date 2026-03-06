@@ -80,11 +80,38 @@ void compositor_draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32
 }
 
 static void draw_char(char c, uint32_t x, uint32_t y, uint32_t color) {
-    if (c > 127 || !font[(uint8_t)c][0]) return; 
+    if (c > 127 || !font[(uint8_t)c][0] || !double_buffer) return;
+
+    if (x + 8 <= g_info.fb_width && y + 8 <= g_info.fb_height) {
+        for (int i = 0; i < 8; i++) {
+            uint8_t row_data = font[(uint8_t)c][i];
+            if (!row_data) continue;
+            uint32_t* row_ptr = &double_buffer[(y + i) * g_info.fb_pitch + x];
+            if ((row_data >> 7) & 1) row_ptr[0] = color;
+            if ((row_data >> 6) & 1) row_ptr[1] = color;
+            if ((row_data >> 5) & 1) row_ptr[2] = color;
+            if ((row_data >> 4) & 1) row_ptr[3] = color;
+            if ((row_data >> 3) & 1) row_ptr[4] = color;
+            if ((row_data >> 2) & 1) row_ptr[5] = color;
+            if ((row_data >> 1) & 1) row_ptr[6] = color;
+            if ((row_data >> 0) & 1) row_ptr[7] = color;
+        }
+        return;
+    }
+
     for (int i = 0; i < 8; i++) {
+        uint8_t row_data = font[(uint8_t)c][i];
+        if (!row_data) continue;
+        uint32_t py = y + i;
+        if (py >= g_info.fb_height) break;
+        uint32_t* row_ptr = &double_buffer[py * g_info.fb_pitch];
+
         for (int j = 0; j < 8; j++) {
-            if ((font[(uint8_t)c][i] >> (7 - j)) & 1) {
-                compositor_put_pixel(x + j, y + i, color);
+            if ((row_data >> (7 - j)) & 1) {
+                uint32_t px = x + j;
+                if (px < g_info.fb_width) {
+                    row_ptr[px] = color;
+                }
             }
         }
     }

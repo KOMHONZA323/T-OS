@@ -30,6 +30,45 @@ void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, int scale) {
     uint32_t fb_pitch = global_boot_info.fb_pitch;
 
     uint8_t* glyph = font[(uint8_t)c];
+
+    int full_on_screen = ((int)x >= 0) && ((int)y >= 0) && (x + 8 * scale <= fb_width) && (y + 8 * scale <= fb_height);
+
+    if (full_on_screen && scale == 1) {
+        for (int i = 0; i < 8; i++) {
+            uint8_t row_data = glyph[i];
+            if (!row_data) continue;
+            uint32_t* row_ptr = &fb[(y + i) * fb_pitch + x];
+            for (int j = 0; j < 8; j++) {
+                if ((row_data >> (7 - j)) & 1) {
+                    row_ptr[j] = color;
+                }
+            }
+        }
+        return;
+    }
+
+    if (full_on_screen && scale == 2) {
+        for (int i = 0; i < 8; i++) {
+            uint8_t row_data = glyph[i];
+            if (!row_data) continue;
+
+            uint32_t py1 = y + i * 2;
+            uint32_t py2 = py1 + 1;
+            uint32_t* row_ptr1 = &fb[py1 * fb_pitch + x];
+            uint32_t* row_ptr2 = &fb[py2 * fb_pitch + x];
+
+            for (int j = 0; j < 8; j++) {
+                if ((row_data >> (7 - j)) & 1) {
+                    row_ptr1[j*2] = color;
+                    row_ptr1[j*2+1] = color;
+                    row_ptr2[j*2] = color;
+                    row_ptr2[j*2+1] = color;
+                }
+            }
+        }
+        return;
+    }
+
     for (int i = 0; i < 8; i++) {
         uint8_t row_data = glyph[i];
         if (!row_data) continue;
@@ -39,15 +78,15 @@ void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, int scale) {
         uint32_t py_max = base_py + scale;
         if (py_max > fb_height) py_max = fb_height;
 
-        for (int j = 0; j < 8; j++) {
-            if ((row_data >> j) & 1) {
-                uint32_t base_px = x + (7 - j) * scale;
-                if (base_px >= fb_width) continue;
-                uint32_t px_max = base_px + scale;
-                if (px_max > fb_width) px_max = fb_width;
+        for (uint32_t py = base_py; py < py_max; py++) {
+            uint32_t* row_ptr = &fb[py * fb_pitch];
+            for (int j = 7; j >= 0; j--) {
+                if ((row_data >> j) & 1) {
+                    uint32_t base_px = x + (7 - j) * scale;
+                    if (base_px >= fb_width) continue;
+                    uint32_t px_max = base_px + scale;
+                    if (px_max > fb_width) px_max = fb_width;
 
-                for (uint32_t py = base_py; py < py_max; py++) {
-                    uint32_t* row_ptr = &fb[py * fb_pitch];
                     for (uint32_t px = base_px; px < px_max; px++) {
                         row_ptr[px] = color;
                     }
@@ -295,7 +334,7 @@ void tgc_lex(char* s) {
             else { tokens[token_cnt].type=T_ID; tgc_strncpy(tokens[token_cnt].str,b,sizeof(tokens[token_cnt].str)); token_cnt++; }
         } else if (*s == '"') {
             s++; char b[256]; int i=0; while(*s&&*s!='"'&&i<254){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
-            if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strcpy(tokens[token_cnt++].str,b);
+            if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strncpy(tokens[token_cnt++].str,b,sizeof(tokens[token_cnt].str));
         } else {
             if(*s=='='&&*(s+1)=='='){ tokens[token_cnt++].type=T_EQ; s+=2; }
             else if(*s=='='){ tokens[token_cnt++].type=T_ASSIGN; s++; }
