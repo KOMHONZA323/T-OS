@@ -18,13 +18,13 @@ add_custom_command(OUTPUT bootx64.efi
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c idt.c entry.s)
-set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64")
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c)
+set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64 -I${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(OUTPUT kernel.bin
     COMMAND ld -nostdlib -Ttext 0x1000000 -e _start $<TARGET_OBJECTS:kernel_obj> -o ${CMAKE_BINARY_DIR}/kernel.elf
     COMMAND objcopy -O binary ${CMAKE_BINARY_DIR}/kernel.elf ${CMAKE_BINARY_DIR}/kernel.bin
-    DEPENDS kernel_obj
+    DEPENDS kernel_obj compositor.h idt.h bootinfo.h
     COMMAND_EXPAND_LISTS
 )
 add_custom_target(kernel ALL DEPENDS kernel.bin)

@@ -516,7 +516,8 @@ void delay_ms(UINTN milliseconds) {
 }
 
 void execute_command(CHAR16 *cmd) {
-    if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
+    if (cmd[0] == 0) return;
+    Process *p = create_process(current_proc, cmd);
     char acmd[256]; int i; for(i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; } acmd[i]=0; acmd[255]=0;
     if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic, startgui\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();
