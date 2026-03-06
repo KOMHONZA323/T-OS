@@ -28,6 +28,15 @@ static inline void strcpy16(CHAR16 *dest, CHAR16 *src) {
     *dest = 0;
 }
 
+static inline void strncpy16(CHAR16 *dest, CHAR16 *src, UINTN n) {
+    if (n == 0) return;
+    UINTN i;
+    for (i = 0; i < n - 1 && src[i]; i++) {
+        dest[i] = src[i];
+    }
+    dest[i] = 0;
+}
+
 static inline UINTN strlen16(CHAR16 *s) {
     UINTN len = 0;
     while (*s++) {
