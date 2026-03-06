@@ -110,15 +110,45 @@ void gui_fill_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
 }
 
 void gui_draw_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
-  if (w == 0 || h == 0)
+  if (w == 0 || h == 0 || !back_buffer)
     return;
-  for (UINT32 i = 0; i < w; i++) {
-    gui_draw_pixel(x + i, y, color);
-    gui_draw_pixel(x + i, y + h - 1, color);
+
+  UINT32 sw = gui_boot_info.fb_width;
+  UINT32 sh = gui_boot_info.fb_height;
+
+  UINT32 x2 = x + w - 1;
+  UINT32 y2 = y + h - 1;
+
+  // Horizontal lines (top and bottom)
+  if (y < sh && x < sw) {
+    UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
+    uint32_t *p = &back_buffer[(UINT64)y * sw + x];
+    for (UINT32 i = x; i <= end; i++)
+      *p++ = color;
   }
-  for (UINT32 j = 0; j < h; j++) {
-    gui_draw_pixel(x, y + j, color);
-    gui_draw_pixel(x + w - 1, y + j, color);
+  if (y2 < sh && y2 != y && x < sw) {
+    UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
+    uint32_t *p = &back_buffer[(UINT64)y2 * sw + x];
+    for (UINT32 i = x; i <= end; i++)
+      *p++ = color;
+  }
+
+  // Vertical lines (left and right)
+  if (x < sw && y < sh) {
+    UINT32 end = (y2 >= sh) ? (sh - 1) : y2;
+    uint32_t *p = &back_buffer[(UINT64)y * sw + x];
+    for (UINT32 j = y; j <= end; j++) {
+      *p = color;
+      p += sw;
+    }
+  }
+  if (x2 < sw && x2 != x && y < sh) {
+    UINT32 end = (y2 >= sh) ? (sh - 1) : y2;
+    uint32_t *p = &back_buffer[(UINT64)y * sw + x2];
+    for (UINT32 j = y; j <= end; j++) {
+      *p = color;
+      p += sw;
+    }
   }
 }
 
