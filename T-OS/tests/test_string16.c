@@ -59,8 +59,28 @@ void test_strcmp16() {
     ASSERT_EQ(res < 0, 1, "s_wide1 < s_wide3 should return negative");
 }
 
+void test_strncpy16() {
+    printf("Running strncpy16 tests...\n");
+
+    CHAR16 s_src[] = {'a', 'b', 'c', 'd', 0};
+    CHAR16 s_dest[5];
+    CHAR16 s_dest_short[3];
+
+    strncpy16(s_dest, s_src, 5);
+    ASSERT_EQ(strcmp16(s_dest, s_src), 0, "Normal strncpy16 should copy fully");
+
+    strncpy16(s_dest_short, s_src, 3);
+    CHAR16 s_expected_short[] = {'a', 'b', 0};
+    ASSERT_EQ(strcmp16(s_dest_short, s_expected_short), 0, "Truncated strncpy16 should add null terminator");
+
+    CHAR16 s_dest_zero[5] = {1, 2, 3, 4, 5};
+    strncpy16(s_dest_zero, s_src, 0);
+    ASSERT_EQ(s_dest_zero[0], 1, "strncpy16 with n=0 should not modify dest");
+}
+
 int main() {
     test_strcmp16();
+    test_strncpy16();
 
     printf("\nTest Summary: %d run, %d failed\n", tests_run, tests_failed);
     return tests_failed > 0 ? 1 : 0;

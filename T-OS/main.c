@@ -214,9 +214,12 @@ int tgc_strcmp(const char *s1, const char *s2) {
     return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
-void tgc_strcpy(char *d, const char *s) {
-    while (*s)
+void tgc_strncpy(char *d, const char *s, int n) {
+    int i = 0;
+    while (*s && i < n - 1) {
         *d++ = *s++;
+        i++;
+    }
     *d = 0;
 }
 
@@ -272,7 +275,7 @@ int get_var(char *name) {
         if (tgc_strcmp(vars[i].name, name) == 0)
             return i;
     }
-    tgc_strcpy(vars[var_cnt].name, name);
+    tgc_strncpy(vars[var_cnt].name, name, sizeof(vars[var_cnt].name));
     vars[var_cnt].val = 0;
     return var_cnt++;
 }
@@ -289,7 +292,7 @@ void tgc_lex(char* s) {
             else if(tgc_strcmp(b,"while")==0) tokens[token_cnt++].type=T_WHILE;
             else if(tgc_strcmp(b,"print")==0) tokens[token_cnt++].type=T_PRINT;
             else if(tgc_strcmp(b,"return")==0) tokens[token_cnt++].type=T_RETURN;
-            else { tokens[token_cnt].type=T_ID; tgc_strcpy(tokens[token_cnt++].str,b); }
+            else { tokens[token_cnt].type=T_ID; tgc_strncpy(tokens[token_cnt].str,b,sizeof(tokens[token_cnt].str)); token_cnt++; }
         } else if (*s == '"') {
             s++; char b[256]; int i=0; while(*s&&*s!='"'&&i<254){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
             if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strcpy(tokens[token_cnt++].str,b);
@@ -340,12 +343,12 @@ void tgc_skip() { int b=0; while(tokens[t_pos].type!=T_EOF){ if(tokens[t_pos].ty
 int tgc_stmt(int *rv) {
     if(tokens[t_pos].type==T_INT){ t_pos++; if(tokens[t_pos].type==T_ID){ int i=get_var(tokens[t_pos++].str); if(tokens[t_pos].type==T_ASSIGN){t_pos++;vars[i].val=tgc_expr();} } if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else if(tokens[t_pos].type==T_ID){ int i=get_var(tokens[t_pos++].str); if(tokens[t_pos].type==T_ASSIGN){t_pos++;vars[i].val=tgc_expr();} if(tokens[t_pos].type==T_SEMI)t_pos++; }
-    else if(tokens[t_pos].type==T_PRINT){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_STRING){ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<254){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; } else{ print_uint(tgc_expr()); print((CHAR16*)L"\r\n"); } if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
+    else if(tokens[t_pos].type==T_PRINT){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_STRING){ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<253){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; } else{ print_uint(tgc_expr()); print((CHAR16*)L"\r\n"); } if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else if(tokens[t_pos].type==T_RETURN){ t_pos++; *rv=tgc_expr(); if(tokens[t_pos].type==T_SEMI)t_pos++; return 1; }
     else if(tokens[t_pos].type==T_IF){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; int c=tgc_expr(); if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; if(c){ while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; } else tgc_skip(); }
     else if(tokens[t_pos].type==T_WHILE){ int s=t_pos; t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; int c=tgc_expr(); if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; if(c){ while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; t_pos=s; } else tgc_skip(); }
     else if(tokens[t_pos].type==T_LBRACE){ t_pos++; while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; }
-    else if(tokens[t_pos].type==T_STRING){ /* HolyC Print */ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<254){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
+    else if(tokens[t_pos].type==T_STRING){ /* HolyC Print */ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<253){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else { if(tokens[t_pos].type!=T_EOF)t_pos++; }
     return 0;
 }
@@ -361,7 +364,7 @@ void cmd_tgc(CHAR16 *args) {
     var_cnt = 0; tgc_lex(b); int mp = -1; for(int i=0; i<token_cnt; i++) if(tokens[i].type==T_ID && tgc_strcmp(tokens[i].str,"main")==0){ mp=i; break; }
     t_pos = 0; if(mp!=-1){ t_pos=mp+1; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; }
     int rv = 0; while(tokens[t_pos].type!=T_EOF && tokens[t_pos].type!=T_RBRACE){ if(tgc_stmt(&rv))break; }
-    CHAR16 bin[256]; strcpy16(bin, filename); int bl = strlen16(bin); if(bl>2){ bin[bl-1]='f'; bin[bl-2]='x'; }
+    CHAR16 bin[256]; strncpy16(bin, filename, 256); int bl = strlen16(bin); if(bl>2){ bin[bl-1]='f'; bin[bl-2]='x'; }
     EFI_FILE_PROTOCOL *bf; if (dir->Open(dir, &bf, bin, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE, 0) == EFI_SUCCESS) {
         texf_header_t h = {0x46584554, 1, 0x401000, is_hc?2:1, 0, 0, 0, {0}}; UINTN hs = sizeof(h); bf->Write(bf, &hs, &h); bf->Close(bf);
         print((CHAR16*)L"Binary generated: "); print(bin); print((CHAR16*)L"\r\n");
@@ -514,7 +517,7 @@ void delay_ms(UINTN milliseconds) {
 
 void execute_command(CHAR16 *cmd) {
     if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
-    char acmd[256]; int i; for(i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; } acmd[i]=0;
+    char acmd[256]; int i; for(i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; } acmd[i]=0; acmd[255]=0;
     if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic, startgui\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();
     else if(strcmp16(cmd,(CHAR16*)L"ls")==0) cmd_ls();
