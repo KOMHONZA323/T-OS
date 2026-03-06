@@ -186,23 +186,84 @@ void cmd_tgo(CHAR16 *filename) {
         }
         tgo_redraw(filename, buffer_size, cursor_pos);
     }
-    File->SetPosition(File, 0); File->Write(File, &buffer_size, tgo_buffer); File->Close(File);
-    if (dir != cwd) dir->Close(dir); ST->ConOut->EnableCursor(ST->ConOut, FALSE); ST->ConOut->ClearScreen(ST->ConOut);
+    File->SetPosition(File, 0);
+    File->Write(File, &buffer_size, tgo_buffer);
+    File->Close(File);
+    if (dir != cwd)
+        dir->Close(dir);
+    ST->ConOut->EnableCursor(ST->ConOut, FALSE);
+    ST->ConOut->ClearScreen(ST->ConOut);
 }
 
-int tgc_strcmp(const char* s1, const char* s2) { while(*s1 && (*s1 == *s2)) { s1++; s2++; } return *(unsigned char*)s1 - *(unsigned char*)s2; }
-void tgc_strcpy(char* d, const char* s) { while(*s) *d++ = *s++; *d = 0; }
+int tgc_strcmp(const char *s1, const char *s2) {
+    while (*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+    }
+    return *(unsigned char *)s1 - *(unsigned char *)s2;
+}
+
+void tgc_strcpy(char *d, const char *s) {
+    while (*s)
+        *d++ = *s++;
+    *d = 0;
+}
+
 int tgc_is_digit(char c) { return c >= '0' && c <= '9'; }
-int tgc_is_alpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 
-typedef enum { T_INT, T_ID, T_NUM, T_STRING, T_IF, T_WHILE, T_PRINT, T_RETURN, T_PLUS, T_MINUS, T_MUL, T_DIV, T_LT, T_GT, T_EQ, T_ASSIGN, T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE, T_SEMI, T_EOF } TokenType;
-typedef struct { TokenType type; char str[256]; int val; } Token;
-Token tokens[2048]; int token_cnt = 0; int t_pos = 0;
-struct { char name[32]; int val; } vars[128]; int var_cnt = 0;
+int tgc_is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
 
-int get_var(char* name) {
-    for (int i=0; i<var_cnt; i++) if (tgc_strcmp(vars[i].name, name) == 0) return i;
-    tgc_strcpy(vars[var_cnt].name, name); vars[var_cnt].val = 0; return var_cnt++;
+typedef enum {
+    T_INT,
+    T_ID,
+    T_NUM,
+    T_STRING,
+    T_IF,
+    T_WHILE,
+    T_PRINT,
+    T_RETURN,
+    T_PLUS,
+    T_MINUS,
+    T_MUL,
+    T_DIV,
+    T_LT,
+    T_GT,
+    T_EQ,
+    T_ASSIGN,
+    T_LPAREN,
+    T_RPAREN,
+    T_LBRACE,
+    T_RBRACE,
+    T_SEMI,
+    T_EOF
+} TokenType;
+
+typedef struct {
+    TokenType type;
+    char str[256];
+    int val;
+} Token;
+
+Token tokens[2048];
+int token_cnt = 0;
+int t_pos = 0;
+
+struct {
+    char name[32];
+    int val;
+} vars[128];
+int var_cnt = 0;
+
+int get_var(char *name) {
+    for (int i = 0; i < var_cnt; i++) {
+        if (tgc_strcmp(vars[i].name, name) == 0)
+            return i;
+    }
+    tgc_strcpy(vars[var_cnt].name, name);
+    vars[var_cnt].val = 0;
+    return var_cnt++;
 }
 
 void tgc_lex(char* s) {
