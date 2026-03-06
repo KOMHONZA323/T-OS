@@ -1,13 +1,5 @@
 #include <stdint.h>
-
-// Match the struct from main.c
-typedef struct {
-    uint64_t fb_base;
-    uint64_t fb_size;
-    uint32_t fb_width;
-    uint32_t fb_height;
-    uint32_t fb_pitch; // This is PixelsPerScanLine
-} BootInfo;
+#include "bootinfo.h"
 
 // A simple 8x8 font
 static uint8_t font[128][8] = {

@@ -7,6 +7,7 @@
 #define EFIAPI __attribute__((ms_abi))
 
 typedef uint16_t CHAR16;
+typedef char CHAR8;
 typedef uint64_t UINTN;
 typedef uint64_t UINT64;
 typedef uint32_t UINT32;
@@ -130,6 +131,7 @@ typedef struct {
     UINT32 MaxMode;
     UINT32 Mode;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
+    UINTN SizeOfInfo;
     UINTN FrameBufferBase;
     UINTN FrameBufferSize;
 } EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
@@ -222,6 +224,9 @@ typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_POOL)(UINT32 PoolType, UINTN Size, void
 typedef EFI_STATUS (EFIAPI *EFI_FREE_POOL)(void *Buffer);
 typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_PAGES)(UINT32 Type, UINT32 MemoryType, UINTN Pages, EFI_PHYSICAL_ADDRESS *Memory);
 
+typedef void (EFIAPI *EFI_COPY_MEM)(void *Destination, void *Source, UINTN Length);
+typedef void (EFIAPI *EFI_SET_MEM)(void *Buffer, UINTN Size, UINT8 Value);
+
 typedef struct {
     EFI_TABLE_HEADER Hdr;
     void *RaiseTPL;
@@ -266,8 +271,8 @@ typedef struct {
     void *InstallMultipleProtocolInterfaces;
     void *UninstallMultipleProtocolInterfaces;
     void *CalculateCrc32;
-    void *CopyMem;
-    void *SetMem;
+    EFI_COPY_MEM CopyMem;
+    EFI_SET_MEM SetMem;
     void *CreateEventEx;
 } EFI_BOOT_SERVICES;
 
@@ -377,5 +382,45 @@ typedef struct {
     {0x5B1B31A1, 0x9562, 0x11D2, {0x8E, 0x3F, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B}}
 #define EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID \
     {0x964E5B22, 0x6459, 0x11D2, {0x8E, 0x39, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B}}
+
+typedef UINT8 BOOLEAN;
+
+typedef struct {
+    INT32 RelativeMovementX;
+    INT32 RelativeMovementY;
+    INT32 RelativeMovementZ;
+    BOOLEAN LeftButton;
+    BOOLEAN RightButton;
+} EFI_SIMPLE_POINTER_STATE;
+
+typedef struct _EFI_SIMPLE_POINTER_PROTOCOL EFI_SIMPLE_POINTER_PROTOCOL;
+
+typedef EFI_STATUS (EFIAPI *EFI_SIMPLE_POINTER_RESET)(
+    EFI_SIMPLE_POINTER_PROTOCOL *This,
+    BOOLEAN ExtendedVerification
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_SIMPLE_POINTER_GET_STATE)(
+    EFI_SIMPLE_POINTER_PROTOCOL *This,
+    EFI_SIMPLE_POINTER_STATE *State
+);
+
+typedef struct {
+    UINT64 ResolutionX;
+    UINT64 ResolutionY;
+    UINT64 ResolutionZ;
+    BOOLEAN LeftButton;
+    BOOLEAN RightButton;
+} EFI_SIMPLE_POINTER_MODE;
+
+struct _EFI_SIMPLE_POINTER_PROTOCOL {
+    EFI_SIMPLE_POINTER_RESET Reset;
+    EFI_SIMPLE_POINTER_GET_STATE GetState;
+    void *WaitForInput;
+    EFI_SIMPLE_POINTER_MODE *Mode;
+};
+
+#define EFI_SIMPLE_POINTER_PROTOCOL_GUID \
+    {0x31878c87, 0x0b75, 0x11d5, {0x9a, 0x4f, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d}}
 
 #endif

@@ -1,13 +1,6 @@
 #include "uefi.h"
-
-// Match the struct from kernel.c
-typedef struct {
-    uint64_t fb_base;
-    uint64_t fb_size;
-    uint32_t fb_width;
-    uint32_t fb_height;
-    uint32_t fb_pitch; // This is PixelsPerScanLine
-} BootInfo;
+#include "bootinfo.h"
+#include "gui/gui.h"
 
 EFI_SYSTEM_TABLE *ST;
 EFI_HANDLE ImgHandle;
@@ -67,8 +60,34 @@ typedef struct Process {
 Process proc_table[MAX_PROCS];
 UINTN proc_count = 0; Process *current_proc = NULL; UINTN next_pid = 1;
 
-void print(CHAR16 *str) { ST->ConOut->OutputString(ST->ConOut, str); }
-void print_char(CHAR16 c) { CHAR16 str[2]; str[0] = c; str[1] = 0; print(str); }
+int gui_active = 0;
+
+Process* create_process(Process *parent, CHAR16 *cmd);
+void execute_command(CHAR16 *cmd);
+
+void print(CHAR16 *str) {
+    if (gui_active) {
+        char buf[256];
+        int i = 0;
+        while (str[i] && i < 255) {
+            buf[i] = (char)str[i];
+            i++;
+        }
+        buf[i] = 0;
+        gui_term_print(buf);
+    } else {
+        ST->ConOut->OutputString(ST->ConOut, str);
+    }
+}
+
+void print_char(CHAR16 c) {
+    if (gui_active) {
+        char buf[2] = {(char)c, 0};
+        gui_term_print(buf);
+    } else {
+        CHAR16 str[2]; str[0] = c; str[1] = 0; ST->ConOut->OutputString(ST->ConOut, str);
+    }
+}
 void print_uint(UINTN n) {
     if (n == 0) { print_char('0'); return; }
     CHAR16 buf[32]; int i = 0;
@@ -228,8 +247,14 @@ int tgc_factor() {
     if(tokens[t_pos].type==T_NUM) return tokens[t_pos++].val;
     if(tokens[t_pos].type==T_ID && tgc_strcmp(tokens[t_pos].str,"getchar")==0){
         t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_RPAREN)t_pos++;
-        UINTN i; EFI_INPUT_KEY k; do{ ST->BootServices->WaitForEvent(1,&ST->ConIn->WaitForKey,&i); }while(ST->ConIn->ReadKeyStroke(ST->ConIn,&k)!=EFI_SUCCESS||k.UnicodeChar==0);
-        if(k.UnicodeChar=='\r'){print((CHAR16*)L"\r\n");return '\n';} print_char(k.UnicodeChar); return k.UnicodeChar;
+        if (gui_active) {
+            char c = gui_term_getchar();
+            if (c == '\n') { gui_term_print("\n"); return '\n'; }
+            char buf[2] = {c, 0}; gui_term_print(buf); return c;
+        } else {
+            UINTN i; EFI_INPUT_KEY k; do{ ST->BootServices->WaitForEvent(1,&ST->ConIn->WaitForKey,&i); }while(ST->ConIn->ReadKeyStroke(ST->ConIn,&k)!=EFI_SUCCESS||k.UnicodeChar==0);
+            if(k.UnicodeChar=='\r'){print((CHAR16*)L"\r\n");return '\n';} print_char(k.UnicodeChar); return k.UnicodeChar;
+        }
     }
     if(tokens[t_pos].type==T_ID){ int idx=get_var(tokens[t_pos++].str); return vars[idx].val; }
     if(tokens[t_pos].type==T_LPAREN){ t_pos++; int v=tgc_expr(); if(tokens[t_pos].type==T_RPAREN)t_pos++; return v; }
@@ -361,6 +386,55 @@ void cmd_panic() {
     }
 }
 
+void cmd_startgui() {
+    if (global_boot_info.fb_base == 0) {
+        print((CHAR16*)L"Graphics output is not available.\r\n");
+        return;
+    }
+    
+    gui_init(ST, global_boot_info);
+    gui_active = 1;
+    gui_start();
+    
+    print((CHAR16*)L"Welcome to T-OS GUI Terminal!\r\n");
+    print((CHAR16*)L"Type 'exit' to return to text mode.\r\n");
+    
+    char cmd_buf[256];
+    int cmd_len = 0;
+    
+    while (gui_active) {
+        print((CHAR16*)L"T-OS-> ");
+        cmd_len = 0;
+        while (1) {
+            char c = gui_term_getchar();
+            if (c == '\n') {
+                print((CHAR16*)L"\r\n");
+                break;
+            } else if (c == '\b' && cmd_len > 0) {
+                cmd_len--;
+                print((CHAR16*)L"\b \b");
+            } else if (c >= 32 && c <= 126 && cmd_len < 255) {
+                cmd_buf[cmd_len++] = c;
+                CHAR16 w[2] = {c, 0};
+                print(w);
+            }
+        }
+        cmd_buf[cmd_len] = 0;
+        
+        if (tgc_strcmp(cmd_buf, "exit") == 0) {
+            gui_active = 0;
+            break;
+        }
+        
+        // Execute command
+        CHAR16 wcmd[256];
+        for (int i = 0; i <= cmd_len; i++) wcmd[i] = (CHAR16)cmd_buf[i];
+        execute_command(wcmd);
+    }
+    
+    ST->ConOut->ClearScreen(ST->ConOut);
+}
+
 void delay_ms(UINTN milliseconds) {
     // UEFI Stall is in microseconds, so multiply by 1000
     ST->BootServices->Stall(milliseconds * 1000);
@@ -369,7 +443,7 @@ void delay_ms(UINTN milliseconds) {
 void execute_command(CHAR16 *cmd) {
     if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
     char acmd[256]; for(int i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; }
-    if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic\r\n");
+    if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic, startgui\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();
     else if(strcmp16(cmd,(CHAR16*)L"ls")==0) cmd_ls();
     else if(strncmp16(cmd,(CHAR16*)L"cd ",3)==0) cmd_cd(&cmd[3]);
@@ -381,6 +455,7 @@ void execute_command(CHAR16 *cmd) {
     else if(strcmp16(cmd,(CHAR16*)L"pstree")==0) print_pstree(&proc_table[0],0);
     else if(strcmp16(cmd,(CHAR16*)L"shutdown")==0) ST->RuntimeServices->ResetSystem(EfiResetShutdown,EFI_SUCCESS,0,NULL);
     else if(strcmp16(cmd,(CHAR16*)L"panic")==0) cmd_panic();
+    else if(strcmp16(cmd,(CHAR16*)L"startgui")==0) cmd_startgui();
     else print((CHAR16*)L"Unknown command.\r\n");
     p->status=PROC_EXITED;
 }
@@ -393,20 +468,17 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
     ST->BootServices->LocateProtocol(&gop_guid, NULL, (void**)&gop);
 
-    if (gop) {
-        // Assuming the first mode is good enough
-        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info;
-        UINTN SizeOfInfo;
-        gop->QueryMode(gop, gop->Mode->Mode, &SizeOfInfo, &info);
-
+    if (gop && gop->Mode && gop->Mode->Info) {
         global_boot_info.fb_base = gop->Mode->FrameBufferBase;
         global_boot_info.fb_size = gop->Mode->FrameBufferSize;
-        global_boot_info.fb_width = info->HorizontalResolution;
-        global_boot_info.fb_height = info->VerticalResolution;
-        global_boot_info.fb_pitch = info->PixelsPerScanLine;
-        ST->BootServices->FreePool(info);
+        global_boot_info.fb_width = gop->Mode->Info->HorizontalResolution;
+        global_boot_info.fb_height = gop->Mode->Info->VerticalResolution;
+        global_boot_info.fb_pitch = gop->Mode->Info->PixelsPerScanLine;
+        
+        if (global_boot_info.fb_pitch == 0) {
+            global_boot_info.fb_pitch = global_boot_info.fb_width;
+        }
     } else {
-        // Fallback or error handling if GOP is not available
         global_boot_info.fb_base = 0;
         global_boot_info.fb_size = 0;
         global_boot_info.fb_width = 0;

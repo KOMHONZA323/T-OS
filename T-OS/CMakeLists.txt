@@ -12,8 +12,8 @@ set(UEFI_CFLAGS -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wch
 set(UEFI_LDFLAGS -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main)
 
 add_custom_command(OUTPUT bootx64.efi
-    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h
+    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h ${CMAKE_CURRENT_SOURCE_DIR}/bootinfo.h
 )
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
