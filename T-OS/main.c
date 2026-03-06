@@ -23,19 +23,33 @@ static uint8_t font[128][8] = {
 };
 
 void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, int scale) {
-    if (global_boot_info.fb_base == 0 || c > 127) return;
+    if (global_boot_info.fb_base == 0 || c > 127 || c < 0 || scale <= 0) return;
     uint32_t* fb = (uint32_t*)global_boot_info.fb_base;
+    uint32_t fb_width = global_boot_info.fb_width;
+    uint32_t fb_height = global_boot_info.fb_height;
+    uint32_t fb_pitch = global_boot_info.fb_pitch;
 
+    uint8_t* glyph = font[(uint8_t)c];
     for (int i = 0; i < 8; i++) {
+        uint8_t row_data = glyph[i];
+        if (!row_data) continue;
+
+        uint32_t base_py = y + i * scale;
+        if (base_py >= fb_height) break;
+        uint32_t py_max = base_py + scale;
+        if (py_max > fb_height) py_max = fb_height;
+
         for (int j = 0; j < 8; j++) {
-            if ((font[(uint8_t)c][i] >> j) & 1) {
-                for (int k = 0; k < scale; k++) {
-                    for (int l = 0; l < scale; l++) {
-                        uint32_t px = x + (8 - j - 1) * scale + k;
-                        uint32_t py = y + i * scale + l;
-                        if (px < global_boot_info.fb_width && py < global_boot_info.fb_height) {
-                            fb[py * global_boot_info.fb_pitch + px] = color;
-                        }
+            if ((row_data >> j) & 1) {
+                uint32_t base_px = x + (7 - j) * scale;
+                if (base_px >= fb_width) continue;
+                uint32_t px_max = base_px + scale;
+                if (px_max > fb_width) px_max = fb_width;
+
+                for (uint32_t py = base_py; py < py_max; py++) {
+                    uint32_t* row_ptr = &fb[py * fb_pitch];
+                    for (uint32_t px = base_px; px < px_max; px++) {
+                        row_ptr[px] = color;
                     }
                 }
             }
