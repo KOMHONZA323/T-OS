@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "bootinfo.h"
 #include "idt.h"
+#include "compositor.h"
 
 // A simple 8x8 font
 static uint8_t font[128][8] = {
@@ -148,6 +149,17 @@ static void pit_init(uint32_t frequency) {
 
 extern void irq0_isr(); // from entry.s
 
+// Simple bump allocator for kmalloc
+static uint8_t heap[1024 * 1024 * 4]; // 4MB heap
+static uint64_t heap_ptr = 0;
+
+void* kmalloc(uint64_t size) {
+    if (heap_ptr + size > sizeof(heap)) return (void*)0;
+    void* ptr = &heap[heap_ptr];
+    heap_ptr += size;
+    return ptr;
+}
+
 void kmain(BootInfo* bi) {
     uint32_t* fb = (uint32_t*)bi->fb_base;
 
@@ -166,6 +178,10 @@ void kmain(BootInfo* bi) {
     // Initialize PIT to 1000 Hz
     pit_init(1000);
 
+    // Initialize Compositor
+    compositor_init((GOP_Info*)bi);
+    compositor_print("T-OS Kernel Started\n", 0x00FF00);
+
     // Enable interrupts
     __asm__ volatile ("sti");
 
@@ -183,6 +199,8 @@ void kmain(BootInfo* bi) {
         draw_string(bi, "SUCCESS", screen_center_x - success_len / 2, screen_center_y, 0xFF00FF00, 5);
     }
     
+    compositor_print("Boot Success\n", 0x00FF00);
+
     // Delay for 10 seconds (approximate)
     delay(10000); // 10000 milliseconds = 10 seconds
 

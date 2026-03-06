@@ -295,7 +295,11 @@ void tgc_lex(char* s) {
             else { tokens[token_cnt].type=T_ID; tgc_strncpy(tokens[token_cnt].str,b,sizeof(tokens[token_cnt].str)); token_cnt++; }
         } else if (*s == '"') {
             s++; char b[256]; int i=0; while(*s&&*s!='"'&&i<254){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
-            if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strcpy(tokens[token_cnt++].str,b);
+            if (*s == '"') s++;
+            b[i] = 0;
+            tokens[token_cnt].type = T_STRING;
+            tgc_strncpy(tokens[token_cnt].str, b, sizeof(tokens[token_cnt].str));
+            token_cnt++;
         } else {
             if(*s=='='&&*(s+1)=='='){ tokens[token_cnt++].type=T_EQ; s+=2; }
             else if(*s=='='){ tokens[token_cnt++].type=T_ASSIGN; s++; }
@@ -516,7 +520,8 @@ void delay_ms(UINTN milliseconds) {
 }
 
 void execute_command(CHAR16 *cmd) {
-    if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
+    if (cmd[0] == 0) return;
+    Process *p = create_process(current_proc, cmd);
     char acmd[256]; int i; for(i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; } acmd[i]=0; acmd[255]=0;
     if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic, startgui\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();

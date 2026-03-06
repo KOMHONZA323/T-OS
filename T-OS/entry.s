@@ -27,6 +27,7 @@ stack_bottom:
 .skip 16384 # 16KiB
 stack_top:
 
+.section .text
 .global irq0_isr
 .extern timer_handler
 
