@@ -291,7 +291,7 @@ void tgc_lex(char* s) {
             else if(tgc_strcmp(b,"return")==0) tokens[token_cnt++].type=T_RETURN;
             else { tokens[token_cnt].type=T_ID; tgc_strcpy(tokens[token_cnt++].str,b); }
         } else if (*s == '"') {
-            s++; char b[256]; int i=0; while(*s&&*s!='"'){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
+            s++; char b[256]; int i=0; while(*s&&*s!='"'&&i<254){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
             if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strcpy(tokens[token_cnt++].str,b);
         } else {
             if(*s=='='&&*(s+1)=='='){ tokens[token_cnt++].type=T_EQ; s+=2; }
