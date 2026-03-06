@@ -1,4 +1,5 @@
 #include "uefi.h"
+#include "string16.h"
 #include "bootinfo.h"
 #include "gui/gui.h"
 
@@ -95,10 +96,6 @@ void print_uint(UINTN n) {
     while (i > 0) print_char(buf[--i]);
 }
 
-int strcmp16(CHAR16 *s1, CHAR16 *s2) { while (*s1 && (*s1 == *s2)) { s1++; s2++; } return *s1 - *s2; }
-int strncmp16(CHAR16 *s1, CHAR16 *s2, UINTN n) { while (n && *s1 && (*s1 == *s2)) { s1++; s2++; n--; } if (n == 0) return 0; return *s1 - *s2; }
-void strcpy16(CHAR16 *dest, CHAR16 *src) { while (*src) *dest++ = *src++; *dest = 0; }
-UINTN strlen16(CHAR16 *s) { UINTN len = 0; while (*s++) len++; return len; }
 
 Process* create_process(Process *parent, CHAR16 *cmd) {
     if (proc_count >= MAX_PROCS) return NULL;
