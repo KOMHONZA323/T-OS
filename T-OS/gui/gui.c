@@ -123,14 +123,24 @@ void gui_draw_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
   if (y < sh && x < sw) {
     UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
     uint32_t *p = &back_buffer[(UINT64)y * sw + x];
+#if defined(__x86_64__) || defined(__i386__)
+    UINT32 count = end - x + 1;
+    __asm__ volatile("rep stosl" : "+D"(p), "+c"(count) : "a"(color) : "memory");
+#else
     for (UINT32 i = x; i <= end; i++)
       *p++ = color;
+#endif
   }
   if (y2 < sh && y2 != y && x < sw) {
     UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
     uint32_t *p = &back_buffer[(UINT64)y2 * sw + x];
+#if defined(__x86_64__) || defined(__i386__)
+    UINT32 count = end - x + 1;
+    __asm__ volatile("rep stosl" : "+D"(p), "+c"(count) : "a"(color) : "memory");
+#else
     for (UINT32 i = x; i <= end; i++)
       *p++ = color;
+#endif
   }
 
   // Vertical lines (left and right)
