@@ -344,12 +344,12 @@ void tgc_skip() { int b=0; while(tokens[t_pos].type!=T_EOF){ if(tokens[t_pos].ty
 int tgc_stmt(int *rv) {
     if(tokens[t_pos].type==T_INT){ t_pos++; if(tokens[t_pos].type==T_ID){ int i=get_var(tokens[t_pos++].str); if(tokens[t_pos].type==T_ASSIGN){t_pos++;vars[i].val=tgc_expr();} } if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else if(tokens[t_pos].type==T_ID){ int i=get_var(tokens[t_pos++].str); if(tokens[t_pos].type==T_ASSIGN){t_pos++;vars[i].val=tgc_expr();} if(tokens[t_pos].type==T_SEMI)t_pos++; }
-    else if(tokens[t_pos].type==T_PRINT){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_STRING){ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<254){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; } else{ print_uint(tgc_expr()); print((CHAR16*)L"\r\n"); } if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
+    else if(tokens[t_pos].type==T_PRINT){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_STRING){ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<253){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; } else{ print_uint(tgc_expr()); print((CHAR16*)L"\r\n"); } if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else if(tokens[t_pos].type==T_RETURN){ t_pos++; *rv=tgc_expr(); if(tokens[t_pos].type==T_SEMI)t_pos++; return 1; }
     else if(tokens[t_pos].type==T_IF){ t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; int c=tgc_expr(); if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; if(c){ while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; } else tgc_skip(); }
     else if(tokens[t_pos].type==T_WHILE){ int s=t_pos; t_pos++; if(tokens[t_pos].type==T_LPAREN)t_pos++; int c=tgc_expr(); if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; if(c){ while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; t_pos=s; } else tgc_skip(); }
     else if(tokens[t_pos].type==T_LBRACE){ t_pos++; while(tokens[t_pos].type!=T_RBRACE&&tokens[t_pos].type!=T_EOF){if(tgc_stmt(rv))return 1;} if(tokens[t_pos].type==T_RBRACE)t_pos++; }
-    else if(tokens[t_pos].type==T_STRING){ /* HolyC Print */ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<254){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
+    else if(tokens[t_pos].type==T_STRING){ /* HolyC Print */ CHAR16 w[256]; int i=0,j=0; while(tokens[t_pos].str[i]&&j<253){ if(tokens[t_pos].str[i]=='\n'){w[j++]='\r';w[j++]='\n';i++;} else w[j++]=tokens[t_pos].str[i++]; } w[j]=0; print(w); t_pos++; if(tokens[t_pos].type==T_SEMI)t_pos++; }
     else { if(tokens[t_pos].type!=T_EOF)t_pos++; }
     return 0;
 }
@@ -365,7 +365,7 @@ void cmd_tgc(CHAR16 *args) {
     var_cnt = 0; tgc_lex(b); int mp = -1; for(int i=0; i<token_cnt; i++) if(tokens[i].type==T_ID && tgc_strcmp(tokens[i].str,"main")==0){ mp=i; break; }
     t_pos = 0; if(mp!=-1){ t_pos=mp+1; if(tokens[t_pos].type==T_LPAREN)t_pos++; if(tokens[t_pos].type==T_RPAREN)t_pos++; if(tokens[t_pos].type==T_LBRACE)t_pos++; }
     int rv = 0; while(tokens[t_pos].type!=T_EOF && tokens[t_pos].type!=T_RBRACE){ if(tgc_stmt(&rv))break; }
-    CHAR16 bin[256]; strcpy16(bin, filename); int bl = strlen16(bin); if(bl>2){ bin[bl-1]='f'; bin[bl-2]='x'; }
+    CHAR16 bin[256]; strncpy16(bin, filename, 256); int bl = strlen16(bin); if(bl>2){ bin[bl-1]='f'; bin[bl-2]='x'; }
     EFI_FILE_PROTOCOL *bf; if (dir->Open(dir, &bf, bin, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE, 0) == EFI_SUCCESS) {
         texf_header_t h = {0x46584554, 1, 0x401000, is_hc?2:1, 0, 0, 0, {0}}; UINTN hs = sizeof(h); bf->Write(bf, &hs, &h); bf->Close(bf);
         print((CHAR16*)L"Binary generated: "); print(bin); print((CHAR16*)L"\r\n");
