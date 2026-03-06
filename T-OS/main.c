@@ -488,7 +488,7 @@ void cmd_startgui() {
             } else if (c == '\b' && cmd_len > 0) {
                 cmd_len--;
                 print((CHAR16*)L"\b \b");
-            } else if (c >= 32 && c <= 126 && cmd_len < 255) {
+            } else if (c >= 32 && c <= 126 && cmd_len < 254) {
                 cmd_buf[cmd_len++] = c;
                 CHAR16 w[2] = {c, 0};
                 print(w);
@@ -573,7 +573,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
                 if(k.UnicodeChar=='\r'){print((CHAR16*)L"\r\n");break;}
                 else if(k.UnicodeChar=='\b'&&l>0){l--;print((CHAR16*)L"\b \b");}
                 else if(k.UnicodeChar=='\t') autocomplete(b,&l);
-                else if(k.UnicodeChar!=0&&l<255){b[l++]=k.UnicodeChar;print_char(k.UnicodeChar);}
+                else if(k.UnicodeChar!=0&&l<254){b[l++]=k.UnicodeChar;print_char(k.UnicodeChar);}
             }
         }
         b[l]=0; execute_command(b);
