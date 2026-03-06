@@ -18,7 +18,7 @@ add_custom_command(OUTPUT bootx64.efi
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c entry.s)
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s)
 set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64")
 
 add_custom_command(OUTPUT kernel.bin
