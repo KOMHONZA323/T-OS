@@ -214,9 +214,12 @@ int tgc_strcmp(const char *s1, const char *s2) {
     return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
-void tgc_strcpy(char *d, const char *s) {
-    while (*s)
+void tgc_strncpy(char *d, const char *s, int n) {
+    int i = 0;
+    while (*s && i < n - 1) {
         *d++ = *s++;
+        i++;
+    }
     *d = 0;
 }
 
@@ -272,7 +275,7 @@ int get_var(char *name) {
         if (tgc_strcmp(vars[i].name, name) == 0)
             return i;
     }
-    tgc_strcpy(vars[var_cnt].name, name);
+    tgc_strncpy(vars[var_cnt].name, name, sizeof(vars[var_cnt].name));
     vars[var_cnt].val = 0;
     return var_cnt++;
 }
@@ -289,10 +292,11 @@ void tgc_lex(char* s) {
             else if(tgc_strcmp(b,"while")==0) tokens[token_cnt++].type=T_WHILE;
             else if(tgc_strcmp(b,"print")==0) tokens[token_cnt++].type=T_PRINT;
             else if(tgc_strcmp(b,"return")==0) tokens[token_cnt++].type=T_RETURN;
-            else { tokens[token_cnt].type=T_ID; tgc_strcpy(tokens[token_cnt++].str,b); }
+            else { tokens[token_cnt].type=T_ID; tgc_strncpy(tokens[token_cnt].str,b,sizeof(tokens[token_cnt].str)); token_cnt++; }
         } else if (*s == '"') {
             s++; char b[256]; int i=0; while(*s&&*s!='"'){ if(*s=='\\'&&*(s+1)=='n'){ b[i++]='\n'; s+=2; } else b[i++]=*s++; }
-            if(*s=='"')s++; b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strcpy(tokens[token_cnt++].str,b);
+            if(*s=='"')s++;
+            b[i]=0; tokens[token_cnt].type=T_STRING; tgc_strncpy(tokens[token_cnt].str,b,sizeof(tokens[token_cnt].str)); token_cnt++;
         } else {
             if(*s=='='&&*(s+1)=='='){ tokens[token_cnt++].type=T_EQ; s+=2; }
             else if(*s=='='){ tokens[token_cnt++].type=T_ASSIGN; s++; }
@@ -513,7 +517,8 @@ void delay_ms(UINTN milliseconds) {
 }
 
 void execute_command(CHAR16 *cmd) {
-    if(cmd[0]==0)return; Process *p=create_process(current_proc,cmd);
+    if(cmd[0]==0)return;
+    Process *p=create_process(current_proc,cmd);
     char acmd[256]; int i; for(i=0; i<255; i++){ acmd[i]=(char)cmd[i]; if(cmd[i]==0)break; } acmd[i]=0;
     if(strcmp16(cmd,(CHAR16*)L"help")==0) print((CHAR16*)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, shutdown, panic, startgui\r\n");
     else if(strcmp16(cmd,(CHAR16*)L"about")==0) cmd_about();
