@@ -92,7 +92,8 @@ void kpanic(BootInfo* bi) {
     uint32_t* fb = (uint32_t*)bi->fb_base;
 
     // Clear screen to red for panic
-    for (uint32_t i = 0; i < bi->fb_size / 4; i++) {
+    uint32_t num_pixels = bi->fb_size / 4;
+    for (uint32_t i = 0; i < num_pixels; i++) {
         fb[i] = 0x00FF0000; // Red color
     }
 
@@ -165,7 +166,8 @@ void kmain(BootInfo* bi) {
     uint32_t* fb = (uint32_t*)bi->fb_base;
 
     // Clear screen to black
-    for (uint32_t i = 0; i < bi->fb_size / 4; i++) {
+    uint32_t num_pixels = bi->fb_size / 4;
+    for (uint32_t i = 0; i < num_pixels; i++) {
         fb[i] = 0x00000000;
     }
 
