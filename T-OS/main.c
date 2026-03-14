@@ -436,7 +436,8 @@ void cmd_panic() {
     if (global_boot_info.fb_base != 0) {
         // Clear screen to red for panic
         uint32_t* fb = (uint32_t*)global_boot_info.fb_base;
-        for (uint32_t i = 0; i < global_boot_info.fb_size / 4; i++) {
+        uint32_t num_pixels = global_boot_info.fb_size / 4;
+        for (uint32_t i = 0; i < num_pixels; i++) {
             fb[i] = 0x00FF0000; // Red color
         }
 
