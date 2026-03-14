@@ -46,11 +46,12 @@ void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, int scale) {
                 uint32_t px_max = base_px + scale;
                 if (px_max > fb_width) px_max = fb_width;
 
+                uint32_t* row_ptr = &fb[base_py * fb_pitch];
                 for (uint32_t py = base_py; py < py_max; py++) {
-                    uint32_t* row_ptr = &fb[py * fb_pitch];
                     for (uint32_t px = base_px; px < px_max; px++) {
                         row_ptr[px] = color;
                     }
+                    row_ptr += fb_pitch;
                 }
             }
         }
