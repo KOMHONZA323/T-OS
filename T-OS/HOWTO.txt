@@ -33,11 +33,53 @@ Example:
     asm mov rax, 42
     asm ret
 
-4. SYSTEM COMMANDS
-------------------
-ls       - List directory
-cd <dir> - Change directory
-mkdir    - Create directory
-pstree   - View process hierarchy
-about    - System information
-shutdown - Power off
+5. C STANDARD LIBRARY (libc)
+----------------------------
+T-OS now supports a range of C95 standard functions via the 'tgc' interpreter.
+You can use these functions in your .c files:
+
+[string.h]
+  strlen(s)           - Returns the length of a string.
+  strcpy(dest, src)   - Copies a string.
+  strncpy(dest, src, n) - Copies up to n characters of a string.
+  strcmp(s1, s2)      - Compares two strings.
+  strncmp(s1, s2, n)  - Compares up to n characters of two strings.
+  strcat(dest, src)   - Concatenates two strings.
+  memset(s, c, n)     - Fills memory with a constant byte.
+  memcpy(dest, src, n) - Copies memory area.
+
+[stdlib.h]
+  abs(j)              - Returns the absolute value of an integer.
+  atoi(nptr)          - Converts a string to an integer.
+  malloc(size)        - Allocates memory from the UEFI pool.
+  free(ptr)           - Frees allocated memory.
+
+[ctype.h]
+  isdigit(c)          - Checks for a digit (0-9).
+  isalpha(c)          - Checks for an alphabetic character.
+  isalnum(c)          - Checks for an alphanumeric character.
+  isspace(c)          - Checks for white-space characters.
+  isupper(c)          - Checks for an uppercase letter.
+  islower(c)          - Checks for a lowercase letter.
+  toupper(c)          - Converts a letter to uppercase.
+  tolower(c)          - Converts a letter to lowercase.
+
+[math.h]
+  fabs(x)             - Returns the absolute value of a floating-point number.
+  floor(x)            - Returns the largest integer value less than or equal to x.
+  ceil(x)             - Returns the smallest integer value greater than or equal to x.
+
+[time.h]
+  time(timer)         - Returns the current system time in seconds (simplified).
+
+[wchar.h]
+  wcslen(ws)          - Returns the length of a wide-character string.
+
+Usage Example:
+    int main() {
+        char *s = "Hello";
+        int len = strlen(s);
+        print("Length: ");
+        print(len);
+        return 0;
+    }

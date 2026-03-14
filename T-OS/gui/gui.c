@@ -65,6 +65,7 @@ void gui_init(EFI_SYSTEM_TABLE *ST, BootInfo bi) {
   main_window.minimized = FALSE;
   main_window.maximized = FALSE;
   main_window.dragging = FALSE;
+  main_window.resizing = FALSE;
 }
 
 void gui_draw_pixel(UINT32 x, UINT32 y, UINT32 color) {
@@ -103,9 +104,14 @@ void gui_fill_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
   for (UINT32 j = 0; j < h; j++) {
     uint32_t *line =
         &back_buffer[(uint64_t)(y + j) * (uint64_t)gui_boot_info.fb_width + x];
+#if defined(__x86_64__) || defined(__i386__)
+    UINT32 count = w;
+    __asm__ volatile("rep stosl" : "+D"(line), "+c"(count) : "a"(color) : "memory");
+#else
     for (UINT32 i = 0; i < w; i++) {
       line[i] = color;
     }
+#endif
   }
 }
 
@@ -162,26 +168,43 @@ void gui_draw_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
   }
 }
 
-void gui_draw_char(char c, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color) {
-  if (c < 0 || c > 127)
+void gui_draw_char(char c, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color, UINT32 scale) {
+  if ((uint8_t)c > 127)
     return;
+  if (scale == 0) scale = 1;
   char *glyph = font8x8_basic[(uint8_t)c];
-  for (int i = 0; i < 8; i++) {
-    for (int j = 0; j < 8; j++) {
-      if ((glyph[i] >> j) & 1) {
-        gui_draw_pixel(x + j, y + i, color);
-      } else if (bg_color != 0xFFFFFFFF) {
-        gui_draw_pixel(x + j, y + i, bg_color);
+  
+  if (scale == 1) {
+    for (int i = 0; i < 8; i++) {
+      uint32_t *line = &back_buffer[(uint64_t)(y + i) * (uint64_t)gui_boot_info.fb_width + x];
+      uint8_t row = glyph[i];
+      for (int j = 0; j < 8; j++) {
+        if ((row >> j) & 1) {
+          line[j] = color;
+        } else if (bg_color != 0xFFFFFFFF) {
+          line[j] = bg_color;
+        }
+      }
+    }
+  } else {
+    for (int i = 0; i < 8; i++) {
+      uint8_t row = glyph[i];
+      for (int j = 0; j < 8; j++) {
+        if ((row >> j) & 1) {
+          gui_fill_rect(x + j * scale, y + i * scale, scale, scale, color);
+        } else if (bg_color != 0xFFFFFFFF) {
+          gui_fill_rect(x + j * scale, y + i * scale, scale, scale, bg_color);
+        }
       }
     }
   }
 }
 
 void gui_draw_string(const char *s, UINT32 x, UINT32 y, UINT32 color,
-                     UINT32 bg_color) {
+                     UINT32 bg_color, UINT32 scale) {
   while (*s) {
-    gui_draw_char(*s, x, y, color, bg_color);
-    x += 8;
+    gui_draw_char(*s, x, y, color, bg_color, scale);
+    x += 8 * scale;
     s++;
   }
 }
@@ -195,30 +218,37 @@ void gui_draw_taskbar() {
   UINT32 h = 40;
   UINT32 y = gui_boot_info.fb_height - h;
   gui_fill_rect(0, y, gui_boot_info.fb_width, h, COLOR_TASKBAR);
-  gui_draw_rect(0, y, gui_boot_info.fb_width, h, COLOR_TEXT_W);
+  gui_draw_rect(0, y, gui_boot_info.fb_width, h, COLOR_TEXT_B);
 
   gui_fill_rect(5, y + 5, 60, 30,
                 start_menu_open ? COLOR_TITLEBAR : COLOR_WINDOW);
   gui_draw_rect(5, y + 5, 60, 30, COLOR_TEXT_B);
-  gui_draw_string("Start", 15, y + 15,
+  gui_draw_string("Start", 15, y + 12,
                   start_menu_open ? COLOR_TEXT_W : COLOR_TEXT_B,
-                  start_menu_open ? COLOR_TITLEBAR : COLOR_WINDOW);
+                  start_menu_open ? COLOR_TITLEBAR : COLOR_WINDOW, 1);
 
   if (main_window.minimized) {
     gui_fill_rect(70, y + 5, 120, 30, COLOR_WINDOW);
     gui_draw_rect(70, y + 5, 120, 30, COLOR_TEXT_B);
-    gui_draw_string("Terminal", 80, y + 15, COLOR_TEXT_B, COLOR_WINDOW);
+    gui_draw_string("Terminal", 80, y + 12, COLOR_TEXT_B, COLOR_WINDOW, 1);
   }
 
   if (start_menu_open) {
     gui_fill_rect(5, y - 200, 150, 200, COLOR_WINDOW);
     gui_draw_rect(5, y - 200, 150, 200, COLOR_TEXT_B);
-    gui_draw_string("T-OS Menu", 15, y - 190, COLOR_TEXT_B, COLOR_WINDOW);
-    gui_draw_string("----------", 15, y - 175, COLOR_TEXT_B, COLOR_WINDOW);
-    gui_draw_string("Documents", 15, y - 150, COLOR_TEXT_B, COLOR_WINDOW);
-    gui_draw_string("Computer", 15, y - 130, COLOR_TEXT_B, COLOR_WINDOW);
-    gui_draw_string("Control Panel", 15, y - 110, COLOR_TEXT_B, COLOR_WINDOW);
-    gui_draw_string("Shutdown", 15, y - 40, COLOR_TEXT_B, COLOR_WINDOW);
+    gui_draw_string("T-OS Menu", 15, y - 190, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    gui_draw_string("----------", 15, y - 175, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    gui_draw_string("Documents", 15, y - 150, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    gui_draw_string("Computer", 15, y - 130, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    gui_draw_string("Control Panel", 15, y - 110, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    
+    // Shutdown button
+    if (mouse_x >= 15 && mouse_x <= 140 && mouse_y >= (int)y - 50 && mouse_y <= (int)y - 20) {
+        gui_fill_rect(10, y - 45, 140, 25, COLOR_TITLEBAR);
+        gui_draw_string("Shutdown", 15, y - 40, COLOR_TEXT_W, COLOR_TITLEBAR, 1);
+    } else {
+        gui_draw_string("Shutdown", 15, y - 40, COLOR_TEXT_B, COLOR_WINDOW, 1);
+    }
   }
 }
 
@@ -236,22 +266,32 @@ void gui_draw_window(UINT32 x, UINT32 y, UINT32 w, UINT32 h, const char *title,
   gui_draw_rect(draw_x + 1, draw_y + 1, draw_w - 2, draw_h - 2, COLOR_TEXT_W);
 
   gui_fill_rect(draw_x + 2, draw_y + 2, draw_w - 4, 20, COLOR_TITLEBAR);
-  gui_draw_string(title, draw_x + 5, draw_y + 8, COLOR_TEXT_W, COLOR_TITLEBAR);
+  gui_draw_string(title, draw_x + 5, draw_y + 5, COLOR_TEXT_W, COLOR_TITLEBAR, 1);
 
+  // Close button
   gui_fill_rect(draw_x + draw_w - 20, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 20, draw_y + 4, 16, 16, COLOR_TEXT_B);
   gui_draw_string("X", draw_x + draw_w - 16, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR);
+                  COLOR_TASKBAR, 1);
 
+  // Maximize button
   gui_fill_rect(draw_x + draw_w - 40, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 40, draw_y + 4, 16, 16, COLOR_TEXT_B);
   gui_draw_string("M", draw_x + draw_w - 36, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR);
+                  COLOR_TASKBAR, 1);
 
+  // Minimize button
   gui_fill_rect(draw_x + draw_w - 60, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 60, draw_y + 4, 16, 16, COLOR_TEXT_B);
   gui_draw_string("_", draw_x + draw_w - 56, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR);
+                  COLOR_TASKBAR, 1);
+
+  // Resize handle (bottom-right)
+  if (!maximized) {
+      gui_draw_pixel(draw_x + draw_w - 3, draw_y + draw_h - 3, COLOR_TEXT_B);
+      gui_draw_pixel(draw_x + draw_w - 5, draw_y + draw_h - 3, COLOR_TEXT_B);
+      gui_draw_pixel(draw_x + draw_w - 3, draw_y + draw_h - 5, COLOR_TEXT_B);
+  }
 }
 
 void gui_draw_cursor(UINT32 x, UINT32 y) {
@@ -314,6 +354,7 @@ void term_draw() {
   UINT32 draw_h =
       main_window.maximized ? gui_boot_info.fb_height - 40 : main_window.h;
 
+  UINT32 scale = main_window.maximized ? 2 : 1;
   UINT32 term_x = draw_x + 4;
   UINT32 term_y = draw_y + 24;
 
@@ -321,88 +362,127 @@ void term_draw() {
   for (int i = 0; i < TERM_ROWS; i++) {
     for (int j = 0; j < TERM_COLS; j++) {
       if (term_buf[i][j] != ' ') {
-        gui_draw_char(term_buf[i][j], term_x + j * 8, term_y + i * 8,
-                      COLOR_TEXT_W, COLOR_TERMINAL);
+        gui_draw_char(term_buf[i][j], term_x + j * 8 * scale, term_y + i * 8 * scale,
+                      COLOR_TEXT_W, COLOR_TERMINAL, scale);
       }
     }
   }
-  gui_fill_rect(term_x + term_cx * 8, term_y + term_cy * 8, 8, 8, COLOR_TEXT_W);
+  gui_fill_rect(term_x + term_cx * 8 * scale, term_y + term_cy * 8 * scale, 8 * scale, 8 * scale, COLOR_TEXT_W);
 }
 
 void gui_term_print(const char *str) { term_print(str); }
 
-void gui_poll_mouse() {
+BOOLEAN gui_poll_mouse() {
+  BOOLEAN changed = FALSE;
   if (g_mouse) {
     EFI_SIMPLE_POINTER_STATE state;
     if (g_mouse->GetState(g_mouse, &state) == EFI_SUCCESS) {
-      // Highly reduced sensitivity for better control on real hardware
-      mouse_x += state.RelativeMovementX / 15000;
-      mouse_y += state.RelativeMovementY / 15000;
-      if (mouse_x < 0)
-        mouse_x = 0;
-      if (mouse_y < 0)
-        mouse_y = 0;
-      if ((UINT32)mouse_x >= gui_boot_info.fb_width)
-        mouse_x = gui_boot_info.fb_width - 1;
-      if ((UINT32)mouse_y >= gui_boot_info.fb_height)
-        mouse_y = gui_boot_info.fb_height - 1;
-      prev_mouse_lb = mouse_lb;
-      mouse_lb = state.LeftButton;
+      // Drastically reduced sensitivity for real hardware (divisor increased from 1000 to 50000)
+      int dx = state.RelativeMovementX / 50000;
+      int dy = state.RelativeMovementY / 50000;
+      if (dx != 0 || dy != 0 || state.LeftButton != mouse_lb) {
+          mouse_x += dx;
+          mouse_y += dy;
+          if (mouse_x < 0) mouse_x = 0;
+          if (mouse_y < 0) mouse_y = 0;
+          if ((UINT32)mouse_x >= gui_boot_info.fb_width) mouse_x = gui_boot_info.fb_width - 1;
+          if ((UINT32)mouse_y >= gui_boot_info.fb_height) mouse_y = gui_boot_info.fb_height - 1;
+          
+          prev_mouse_lb = mouse_lb;
+          mouse_lb = state.LeftButton;
+          changed = TRUE;
+      }
     }
   }
 
   UINT32 draw_x = main_window.maximized ? 0 : main_window.x;
   UINT32 draw_y = main_window.maximized ? 0 : main_window.y;
-  UINT32 draw_w =
-      main_window.maximized ? gui_boot_info.fb_width : main_window.w;
+  UINT32 draw_w = main_window.maximized ? gui_boot_info.fb_width : main_window.w;
+  UINT32 draw_h = main_window.maximized ? gui_boot_info.fb_height - 40 : main_window.h;
 
-  if (mouse_lb && !prev_mouse_lb && !main_window.maximized &&
-      !main_window.minimized) {
-    if (mouse_x >= (int)draw_x + 2 && mouse_x <= (int)(draw_x + draw_w - 60) &&
-        mouse_y >= (int)draw_y + 2 && mouse_y <= (int)draw_y + 22) {
-      main_window.dragging = TRUE;
-      main_window.drag_off_x = mouse_x - (int)main_window.x;
-      main_window.drag_off_y = mouse_y - (int)main_window.y;
+  // Window dragging and resizing (only if not minimized)
+  if (mouse_lb && !prev_mouse_lb && !main_window.minimized) {
+    if (!main_window.maximized) {
+        if (mouse_x >= (int)draw_x + 2 && mouse_x <= (int)(draw_x + draw_w - 60) &&
+            mouse_y >= (int)draw_y + 2 && mouse_y <= (int)draw_y + 22) {
+          main_window.dragging = TRUE;
+          main_window.drag_off_x = mouse_x - (int)main_window.x;
+          main_window.drag_off_y = mouse_y - (int)main_window.y;
+        }
+        // Resize initiation
+        if (mouse_x >= (int)(draw_x + draw_w - 20) && mouse_x <= (int)(draw_x + draw_w) &&
+            mouse_y >= (int)(draw_y + draw_h - 20) && mouse_y <= (int)(draw_y + draw_h)) {
+            main_window.resizing = TRUE;
+        }
     }
   }
-  if (!mouse_lb)
+  
+  if (!mouse_lb) {
     main_window.dragging = FALSE;
+    main_window.resizing = FALSE;
+  }
+  
   if (main_window.dragging) {
     main_window.x = mouse_x - main_window.drag_off_x;
     main_window.y = mouse_y - main_window.drag_off_y;
+    changed = TRUE;
   }
 
+  if (main_window.resizing) {
+      main_window.w = mouse_x - (int)main_window.x;
+      main_window.h = mouse_y - (int)main_window.y;
+      if (main_window.w < 150) main_window.w = 150;
+      if (main_window.h < 100) main_window.h = 100;
+      changed = TRUE;
+  }
+
+  // Window buttons and Start menu
   if (mouse_lb && !prev_mouse_lb) {
-    if (mouse_x >= (int)(draw_x + draw_w - 20) &&
-        mouse_x <= (int)(draw_x + draw_w - 4) && mouse_y >= (int)draw_y + 4 &&
-        mouse_y <= (int)draw_y + 20) {
+    // Taskbar restore (FIXED: Improved hit detection)
+    if (main_window.minimized) {
+        UINT32 task_y = gui_boot_info.fb_height - 40;
+        if (mouse_x >= 70 && mouse_x <= 190 && mouse_y >= (int)task_y + 5 && mouse_y <= (int)task_y + 35) {
+            main_window.minimized = FALSE;
+            changed = TRUE;
+        }
     }
-    if (mouse_x >= (int)(draw_x + draw_w - 40) &&
-        mouse_x <= (int)(draw_x + draw_w - 24) && mouse_y >= (int)draw_y + 4 &&
-        mouse_y <= (int)draw_y + 20) {
-      main_window.maximized = !main_window.maximized;
+
+    if (!main_window.minimized) {
+        // Maximize
+        if (mouse_x >= (int)(draw_x + draw_w - 40) &&
+            mouse_x <= (int)(draw_x + draw_w - 24) && mouse_y >= (int)draw_y + 4 &&
+            mouse_y <= (int)draw_y + 20) {
+          main_window.maximized = !main_window.maximized;
+          changed = TRUE;
+        }
+        // Minimize
+        if (mouse_x >= (int)(draw_x + draw_w - 60) &&
+            mouse_x <= (int)(draw_x + draw_w - 44) && mouse_y >= (int)draw_y + 4 &&
+            mouse_y <= (int)draw_y + 20) {
+          main_window.minimized = TRUE;
+          changed = TRUE;
+        }
     }
-    if (mouse_x >= (int)(draw_x + draw_w - 60) &&
-        mouse_x <= (int)(draw_x + draw_w - 44) && mouse_y >= (int)draw_y + 4 &&
-        mouse_y <= (int)draw_y + 20) {
-      main_window.minimized = TRUE;
-    }
-    if (main_window.minimized && mouse_x >= 70 && mouse_x <= 190 &&
-        mouse_y >= (int)gui_boot_info.fb_height - 35 &&
-        mouse_y <= (int)gui_boot_info.fb_height - 5) {
-      main_window.minimized = FALSE;
-    }
-    if (mouse_x >= 5 && mouse_x <= 65 &&
-        mouse_y >= (int)gui_boot_info.fb_height - 35 &&
-        mouse_y <= (int)gui_boot_info.fb_height - 5) {
+
+    // Start button
+    UINT32 tb_y = gui_boot_info.fb_height - 40;
+    if (mouse_x >= 5 && mouse_x <= 65 && mouse_y >= (int)tb_y + 5 && mouse_y <= (int)tb_y + 35) {
       start_menu_open = !start_menu_open;
+      changed = TRUE;
     } else if (start_menu_open) {
+      if (mouse_x >= 15 && mouse_x <= 140 && mouse_y >= (int)tb_y - 50 && mouse_y <= (int)tb_y - 20) {
+          gui_ST->RuntimeServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
+      }
       start_menu_open = FALSE;
+      changed = TRUE;
     }
   }
+  
+  return changed;
 }
 
 char gui_term_getchar() {
+  BOOLEAN needs_redraw = TRUE;
   while (1) {
     EFI_INPUT_KEY key;
     if (gui_ST->ConIn->ReadKeyStroke(gui_ST->ConIn, &key) == EFI_SUCCESS) {
@@ -410,21 +490,29 @@ char gui_term_getchar() {
         return '\n';
       if (key.UnicodeChar != 0)
         return (char)key.UnicodeChar;
+      needs_redraw = TRUE;
     }
 
-    gui_poll_mouse();
+    if (gui_poll_mouse()) {
+        needs_redraw = TRUE;
+    }
 
-    gui_draw_desktop();
-    gui_draw_taskbar();
-    gui_draw_window(main_window.x, main_window.y, main_window.w, main_window.h,
-                    (const char *)main_window.title, main_window.minimized,
-                    main_window.maximized);
-    term_draw();
-    gui_draw_cursor((UINT32)mouse_x, (UINT32)mouse_y);
-    gui_swap_buffers();
-    gui_ST->BootServices->Stall(20000); // 50 FPS
+    if (needs_redraw) {
+        gui_draw_desktop();
+        gui_draw_taskbar();
+        gui_draw_window(main_window.x, main_window.y, main_window.w, main_window.h,
+                        (const char *)main_window.title, main_window.minimized,
+                        main_window.maximized);
+        term_draw();
+        gui_draw_cursor((UINT32)mouse_x, (UINT32)mouse_y);
+        gui_swap_buffers();
+        needs_redraw = FALSE;
+    }
+    
+    gui_ST->BootServices->Stall(10000); // ~100 FPS check, but redraw only if needed
   }
 }
+
 
 void gui_start() {
   gui_draw_desktop();

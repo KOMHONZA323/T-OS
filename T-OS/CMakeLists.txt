@@ -12,13 +12,13 @@ set(UEFI_CFLAGS -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wch
 set(UEFI_LDFLAGS -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main)
 
 add_custom_command(OUTPUT bootx64.efi
-    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h ${CMAKE_CURRENT_SOURCE_DIR}/bootinfo.h
+    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h ${CMAKE_CURRENT_SOURCE_DIR}/bootinfo.h
 )
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c)
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c)
 set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64 -I${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(OUTPUT kernel.bin

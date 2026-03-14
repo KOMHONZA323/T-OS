@@ -14,8 +14,8 @@ void gui_start();
 void gui_draw_pixel(UINT32 x, UINT32 y, UINT32 color);
 void gui_draw_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color);
 void gui_fill_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color);
-void gui_draw_char(char c, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color);
-void gui_draw_string(const char *s, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color);
+void gui_draw_char(char c, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color, UINT32 scale);
+void gui_draw_string(const char *s, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color, UINT32 scale);
 
 // UI elements
 void gui_draw_desktop();
@@ -30,6 +30,7 @@ typedef struct {
     BOOLEAN minimized;
     BOOLEAN maximized;
     BOOLEAN dragging;
+    BOOLEAN resizing;
     INT32 drag_off_x, drag_off_y;
 } GuiWindow;
 

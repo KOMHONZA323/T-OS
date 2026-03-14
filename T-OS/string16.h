@@ -21,11 +21,13 @@ static inline int strncmp16(CHAR16 *s1, CHAR16 *s2, UINTN n) {
     return *s1 - *s2;
 }
 
-static inline void strcpy16(CHAR16 *dest, CHAR16 *src) {
-    while (*src) {
-        *dest++ = *src++;
+static inline void strcpy16(CHAR16 *dest, CHAR16 *src, UINTN n) {
+    if (n == 0) return;
+    UINTN i;
+    for (i = 0; i < n - 1 && src[i]; i++) {
+        dest[i] = src[i];
     }
-    *dest = 0;
+    dest[i] = 0;
 }
 
 static inline void strncpy16(CHAR16 *dest, CHAR16 *src, UINTN n) {
@@ -38,6 +40,7 @@ static inline void strncpy16(CHAR16 *dest, CHAR16 *src, UINTN n) {
 }
 
 static inline UINTN strlen16(CHAR16 *s) {
+    if (!s) return 0;
     UINTN len = 0;
     while (*s++) {
         len++;

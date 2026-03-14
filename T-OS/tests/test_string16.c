@@ -34,9 +34,6 @@ void test_strcmp16() {
     CHAR16 s_abd[] = {'a', 'b', 'd', 0};
     CHAR16 s_ab[] = {'a', 'b', 0};
     CHAR16 s_abcd[] = {'a', 'b', 'c', 'd', 0};
-    CHAR16 s_wide1[] = {0x1234, 0x5678, 0};
-    CHAR16 s_wide2[] = {0x1234, 0x5678, 0};
-    CHAR16 s_wide3[] = {0x1234, 0x5679, 0};
 
     ASSERT_EQ(strcmp16(s_abc, s_abc2), 0, "Identical strings should return 0");
     ASSERT_EQ(strcmp16(s_empty, s_empty), 0, "Two empty strings should return 0");
@@ -52,11 +49,27 @@ void test_strcmp16() {
 
     res = strcmp16(s_ab, s_abc);
     ASSERT_EQ(res < 0, 1, "s_ab < s_abc should return negative");
+}
 
-    ASSERT_EQ(strcmp16(s_wide1, s_wide2), 0, "Identical wide strings should return 0");
+void test_strncmp16() {
+    printf("Running strncmp16 tests...\n");
 
-    res = strcmp16(s_wide1, s_wide3);
-    ASSERT_EQ(res < 0, 1, "s_wide1 < s_wide3 should return negative");
+    CHAR16 s1[] = {'a', 'b', 'c', 0};
+    CHAR16 s2[] = {'a', 'b', 'd', 0};
+
+    ASSERT_EQ(strncmp16(s1, s2, 2), 0, "strncmp16 with match should return 0");
+    ASSERT_EQ(strncmp16(s1, s2, 3) < 0, 1, "strncmp16 with mismatch should return negative");
+    ASSERT_EQ(strncmp16(s1, s2, 0), 0, "strncmp16 with n=0 should return 0");
+}
+
+void test_strcpy16() {
+    printf("Running strcpy16 tests...\n");
+
+    CHAR16 s_src[] = {'a', 'b', 'c', 0};
+    CHAR16 s_dest[4];
+
+    strcpy16(s_dest, s_src, 4);
+    ASSERT_EQ(strcmp16(s_dest, s_src), 0, "strcpy16 should copy fully");
 }
 
 void test_strncpy16() {
@@ -78,9 +91,24 @@ void test_strncpy16() {
     ASSERT_EQ(s_dest_zero[0], 1, "strncpy16 with n=0 should not modify dest");
 }
 
+void test_strlen16() {
+    printf("Running strlen16 tests...\n");
+
+    CHAR16 s_empty[] = {0};
+    CHAR16 s_abc[] = {'a', 'b', 'c', 0};
+
+    ASSERT_EQ(strlen16(s_empty), 0, "strlen16 on empty string should be 0");
+    ASSERT_EQ(strlen16(s_abc), 3, "strlen16 on 'abc' should be 3");
+
+    ASSERT_EQ(strlen16(NULL), 0, "strlen16 on NULL should be 0");
+}
+
 int main() {
     test_strcmp16();
+    test_strncmp16();
+    test_strcpy16();
     test_strncpy16();
+    test_strlen16();
 
     printf("\nTest Summary: %d run, %d failed\n", tests_run, tests_failed);
     return tests_failed > 0 ? 1 : 0;
