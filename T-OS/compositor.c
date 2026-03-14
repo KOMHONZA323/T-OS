@@ -196,13 +196,29 @@ static void draw_aero_theme() {
     
     uint32_t taskbar_h = 40;
     uint32_t taskbar_y = g_info.fb_height - taskbar_h;
+
+    uint32_t r_step = (0x10 << 16) / taskbar_h;
+    uint32_t g_step = (0x20 << 16) / taskbar_h;
+    uint32_t b_step = (0x40 << 16) / taskbar_h;
+
+    uint32_t r_acc = 0x20 << 16;
+    uint32_t g_acc = 0x40 << 16;
+    uint32_t b_acc = 0x80 << 16;
+
+    uint32_t half_h = taskbar_h / 2;
+
     for (uint32_t dy = 0; dy < taskbar_h; dy++) {
-        uint8_t r = 0x20 + (dy * 0x10 / taskbar_h);
-        uint8_t g = 0x40 + (dy * 0x20 / taskbar_h);
-        uint8_t b = 0x80 + (dy * 0x40 / taskbar_h);
-        if (dy < taskbar_h / 2) { r += 0x20; g += 0x20; b += 0x20; }
+        uint8_t r = r_acc >> 16;
+        uint8_t g = g_acc >> 16;
+        uint8_t b = b_acc >> 16;
+
+        if (dy < half_h) { r += 0x20; g += 0x20; b += 0x20; }
         uint32_t color = (r << 16) | (g << 8) | b;
         compositor_draw_rect(0, taskbar_y + dy, g_info.fb_width, 1, color);
+
+        r_acc += r_step;
+        g_acc += g_step;
+        b_acc += b_step;
     }
     
     uint32_t sb_x = 10, sb_y = taskbar_y + 4;
