@@ -178,9 +178,16 @@ static void draw_fedora_theme() {
 // Math Helpers for Gradient/Alpha
 static uint32_t blend_colors(uint32_t fg, uint32_t bg, uint8_t alpha) {
     uint8_t inv_alpha = 255 - alpha;
-    uint8_t r = (uint8_t)(((uint32_t)((fg >> 16) & 0xFF) * alpha + (uint32_t)((bg >> 16) & 0xFF) * inv_alpha) / 255);
-    uint8_t g = (uint8_t)(((uint32_t)((fg >> 8) & 0xFF) * alpha + (uint32_t)((bg >> 8) & 0xFF) * inv_alpha) / 255);
-    uint8_t b = (uint8_t)(((uint32_t)(fg & 0xFF) * alpha + (uint32_t)(bg & 0xFF) * inv_alpha) / 255);
+
+    uint32_t r_blend = ((fg >> 16) & 0xFF) * alpha + ((bg >> 16) & 0xFF) * inv_alpha;
+    uint8_t r = (uint8_t)((r_blend + 1 + (r_blend >> 8)) >> 8);
+
+    uint32_t g_blend = ((fg >> 8) & 0xFF) * alpha + ((bg >> 8) & 0xFF) * inv_alpha;
+    uint8_t g = (uint8_t)((g_blend + 1 + (g_blend >> 8)) >> 8);
+
+    uint32_t b_blend = (fg & 0xFF) * alpha + (bg & 0xFF) * inv_alpha;
+    uint8_t b = (uint8_t)((b_blend + 1 + (b_blend >> 8)) >> 8);
+
     return (r << 16) | (g << 8) | b;
 }
 
