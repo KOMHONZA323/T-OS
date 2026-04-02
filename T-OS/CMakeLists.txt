@@ -18,7 +18,7 @@ add_custom_command(OUTPUT bootx64.efi
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c gui/t_ps2_mouse.c gui/mouse_event_queue.c t_hal_pci.c t_hal_gpu.c)
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c gui/t_ps2_mouse.c gui/mouse_event_queue.c t_hal_pci.c t_hal_gpu.c nsas_scheduler.c t_sync.c tests/test_nsas.c)
 set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64 -I${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(OUTPUT kernel.bin
@@ -56,6 +56,7 @@ add_custom_target(image ALL
     COMMAND mmd -i ${CMAKE_BINARY_DIR}/part.img ::/src
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/bootx64.efi ::/EFI/BOOT/BOOTX64.EFI
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/kernel.bin ::/kernel.bin
+    COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/DOOM1.WAD ::/DOOM1.WAD
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/raycaster.tgg.bin ::/raycaster.bin
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.c ::/raycaster.c
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/hello.c ::/hello.c

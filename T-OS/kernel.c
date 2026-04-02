@@ -4,6 +4,7 @@
 #include "t_hal_pci.h"
 #include "t_hal_gpu.h"
 #include "gui/t_ps2_mouse.h"
+#include "nsas_scheduler.h"
 #include <stdint.h>
 
 // A simple 8x8 font
@@ -88,6 +89,7 @@ volatile uint64_t timer_ticks = 0;
 
 void timer_handler() {
   timer_ticks++;
+  nsas_schedule();
   // Send EOI to PIC master
   outb(0x20, 0x20);
 }
@@ -219,6 +221,25 @@ void kmain(BootInfo *bi) {
   // Initialize Compositor
   compositor_init((GOP_Info *)bi);
   compositor_print("T-OS Kernel Started\n", 0x00FF00);
+
+  // Initialize NSAS
+  nsas_init();
+
+  // Run NSAS Tests
+  void run_nsas_tests();
+  run_nsas_tests();
+
+  // Create simulated tasks (SMP Multi-threading)
+  pcb_t* p_main = create_process(0x1000000);
+  create_thread(p_main, (void*)0x1000); // Thread 1
+
+  // DOOM Initialization
+  uint8_t* doom_wad_data = (uint8_t*)0x2000000; // Expected address from bootloader
+  uint32_t doom_wad_size = 4196020;             // size of shareware WAD
+  void D_DoomMain(void);
+  compositor_print("DOOM: Starting Game Core...\n", 0xFF00FF);
+  // In a real port, we'd spawn a thread:
+  // create_thread(p_main, D_DoomMain);
 
   // PCI & GPU initialization
   uint8_t gpu_bus, gpu_slot;
