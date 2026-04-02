@@ -20,6 +20,12 @@ typedef int sig_atomic_t;
 typedef long fpos_t;
 typedef long clock_t;
 // time_t and wchar_t, wint_t are usually defined by compiler or uefi.h
+typedef uint16_t wchar_t;
+typedef uint32_t wint_t;
+typedef uint64_t time_t;
+typedef int mbstate_t;
+typedef int wctype_t;
+typedef int wctrans_t;
 
 struct tm {
     int tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst;
@@ -52,7 +58,6 @@ struct lconv {
 };
 
 // <wchar.h> / C95 types
-typedef int mbstate_t;
 #ifndef WEOF
 #define WEOF ((wint_t)(-1))
 #endif
@@ -290,7 +295,7 @@ wctype_t wctype(const char *property);
 int iswctype(wint_t wc, wctype_t desc);
 wint_t towlower(wint_t wc);
 wint_t towupper(wint_t wc);
-typedef unsigned long wctrans_t;
+// typedef unsigned long wctrans_t;
 wctrans_t wctrans(const char *property);
 wint_t towctrans(wint_t wc, wctrans_t desc);
 

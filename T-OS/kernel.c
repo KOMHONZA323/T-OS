@@ -1,6 +1,9 @@
 #include "bootinfo.h"
 #include "compositor.h"
 #include "idt.h"
+#include "t_hal_pci.h"
+#include "t_hal_gpu.h"
+#include "gui/t_ps2_mouse.h"
 #include <stdint.h>
 
 // A simple 8x8 font
@@ -150,9 +153,9 @@ static void pic_remap() {
   outb(0xA1, 0x01);
   outb(0x80, 0);
 
-  // Disable all interrupts except IRQ0 (timer)
-  outb(0x21, 0xFE);
-  outb(0xA1, 0xFF);
+  // Disable all interrupts except IRQ0 (timer), IRQ1 (keyboard) and IRQ12 (mouse)
+  outb(0x21, 0xFC); // 1111 1100 (Timer and Keyboard on)
+  outb(0xA1, 0xEF); // 1110 1111 (Mouse on IRQ 12)
 }
 
 static void pit_init(uint32_t frequency) {
@@ -164,6 +167,15 @@ static void pit_init(uint32_t frequency) {
 }
 
 extern void irq0_isr(); // from entry.s
+extern void irq1_isr(); // from entry.s
+extern void irq12_isr(); // from entry.s
+
+void keyboard_handler() {
+  uint8_t scancode = inb(0x60);
+  compositor_handle_interrupt(scancode);
+  // Send EOI to PIC
+  outb(0x20, 0x20);
+}
 
 // Simple bump allocator for kmalloc
 static uint8_t heap[1024 * 1024 * 4]; // 4MB heap
@@ -193,13 +205,31 @@ void kmain(BootInfo *bi) {
   // Set IRQ0 (vector 32) to our ISR handler. Attributes 0x8E = Present, Ring 0,
   // Interrupt Gate
   idt_set_descriptor(32, irq0_isr, 0x8E);
+  // Set IRQ1 (vector 33) to our ISR handler.
+  idt_set_descriptor(33, irq1_isr, 0x8E);
+  // Set IRQ12 (vector 44) to our ISR handler.
+  idt_set_descriptor(44, irq12_isr, 0x8E);
 
   // Initialize PIT to 1000 Hz
   pit_init(1000);
 
+  // Initialize Mouse
+  ps2_mouse_init();
+
   // Initialize Compositor
   compositor_init((GOP_Info *)bi);
   compositor_print("T-OS Kernel Started\n", 0x00FF00);
+
+  // PCI & GPU initialization
+  uint8_t gpu_bus, gpu_slot;
+  pci_find_gpu(&gpu_bus, &gpu_slot);
+  if (gpu_bus != 0xFF) {
+      compositor_print("GPU Found via PCI\n", 0x00FF00);
+      gpu_init(gpu_bus, gpu_slot);
+      compositor_print("GPU Ring Buffer Initialized\n", 0x00FF00);
+  } else {
+      compositor_print("No PCI GPU found\n", 0xFF0000);
+  }
 
   // Enable interrupts
   __asm__ volatile("sti");
@@ -222,14 +252,12 @@ void kmain(BootInfo *bi) {
 
   compositor_print("Boot Success\n", 0x00FF00);
 
-  // Delay for 10 seconds (approximate)
-  delay(10000); // 10000 milliseconds = 10 seconds
-
-  // Trigger panic
-  kpanic(bi);
-
-  // This part should not be reached after kpanic
+  // Main Compositor Loop
   while (1) {
-    __asm__ __volatile__("hlt");
+    compositor_update_mouse();
+    compositor_draw_desktop();
+    compositor_draw_cursor();
+    compositor_swap_buffers();
+    __asm__ volatile("hlt");
   }
 }

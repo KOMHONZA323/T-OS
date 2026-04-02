@@ -423,4 +423,46 @@ struct _EFI_SIMPLE_POINTER_PROTOCOL {
 #define EFI_SIMPLE_POINTER_PROTOCOL_GUID \
     {0x31878c87, 0x0b75, 0x11d5, {0x9a, 0x4f, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d}}
 
+typedef struct {
+  UINT64 CurrentX;
+  UINT64 CurrentY;
+  UINT64 CurrentZ;
+  UINT32 ActiveButtons;
+} EFI_ABSOLUTE_POINTER_STATE;
+
+typedef struct {
+  UINT64 AbsoluteMinX;
+  UINT64 AbsoluteMinY;
+  UINT64 AbsoluteMinZ;
+  UINT64 AbsoluteMaxX;
+  UINT64 AbsoluteMaxY;
+  UINT64 AbsoluteMaxZ;
+  UINT32 Attributes;
+} EFI_ABSOLUTE_POINTER_MODE;
+
+#define EFI_ABSOLUTE_POINTER_MODE_BIT_TOUCH_ACTIVE 0x00000001
+#define EFI_ABSOLUTE_POINTER_MODE_BIT_ALT_ACTIVE   0x00000002
+
+typedef struct _EFI_ABSOLUTE_POINTER_PROTOCOL EFI_ABSOLUTE_POINTER_PROTOCOL;
+
+typedef EFI_STATUS (EFIAPI *EFI_ABSOLUTE_POINTER_RESET) (
+  EFI_ABSOLUTE_POINTER_PROTOCOL *This,
+  BOOLEAN                       ExtendedVerification
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_ABSOLUTE_POINTER_GET_STATE) (
+  EFI_ABSOLUTE_POINTER_PROTOCOL *This,
+  EFI_ABSOLUTE_POINTER_STATE    *State
+);
+
+struct _EFI_ABSOLUTE_POINTER_PROTOCOL {
+  EFI_ABSOLUTE_POINTER_RESET     Reset;
+  EFI_ABSOLUTE_POINTER_GET_STATE GetState;
+  void                           *WaitForInput;
+  EFI_ABSOLUTE_POINTER_MODE      *Mode;
+};
+
+#define EFI_ABSOLUTE_POINTER_PROTOCOL_GUID \
+  { 0x8d59c32f, 0x89d6, 0x4a18, { 0x85, 0xaf, 0xb7, 0x33, 0xef, 0xc7, 0x73, 0x22 } }
+
 #endif

@@ -16,7 +16,10 @@ typedef struct {
 // Theme Modes
 typedef enum {
     THEME_FEDORA_DARK,
-    THEME_WINDOWS_AERO
+    THEME_WINDOWS_AERO,
+    THEME_CYBER_BIOLUME,
+    THEME_BIOS_DEFAULT,
+    THEME_TGO_EDITOR
 } ThemeMode;
 
 // Global UI State
@@ -28,6 +31,10 @@ typedef struct {
     uint32_t term_h;
     uint32_t cur_x;
     uint32_t cur_y;
+    int32_t mouse_x;
+    int32_t mouse_y;
+    uint8_t mouse_buttons;
+    uint8_t last_buttons;
 } UIState;
 
 void compositor_init(GOP_Info* info);
@@ -40,5 +47,7 @@ void compositor_print(const char* str, uint32_t color);
 void compositor_draw_desktop(void);
 void compositor_toggle_theme(void);
 void compositor_handle_interrupt(uint8_t scancode);
+void compositor_update_mouse(void);
+void compositor_draw_cursor(void);
 
 #endif // COMPOSITOR_H

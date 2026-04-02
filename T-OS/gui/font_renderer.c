@@ -10,7 +10,7 @@ void font_draw_char(BootInfo* bi, char c, uint32_t x, uint32_t y, uint32_t color
     uint32_t fb_pitch = bi->fb_pitch;
 
     // font8x8_basic is defined in font.h
-    uint8_t* glyph = (uint8_t*)font8x8_basic[(uint8_t)c];
+    const uint8_t* glyph = (const uint8_t*)font8x8_basic[(uint8_t)c];
     
     for (int i = 0; i < 8; i++) {
         uint8_t row_data = glyph[i];

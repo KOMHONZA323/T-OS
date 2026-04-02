@@ -1,0 +1,2 @@
+These are demos in html there are 3 demos as the 3 modes in the T-OS
+the thrid is bios like it should be a default but for now there will be no example

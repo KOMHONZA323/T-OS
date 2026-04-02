@@ -1,10 +1,12 @@
 #include "font.h"
 #include "gui.h"
+#include "t_ps2_mouse.h"
 
 EFI_SYSTEM_TABLE *gui_ST;
 BootInfo gui_boot_info;
 uint32_t *back_buffer = NULL;
 EFI_SIMPLE_POINTER_PROTOCOL *g_mouse = NULL;
+EFI_ABSOLUTE_POINTER_PROTOCOL *g_touch = NULL;
 
 // Colors - Softer Windows 7 Palette
 #define COLOR_DESKTOP 0x00336699
@@ -45,11 +47,6 @@ void gui_init(EFI_SYSTEM_TABLE *ST, BootInfo bi) {
     ST->BootServices->AllocatePool(
         2, (UINTN)bi.fb_width * (UINTN)bi.fb_height * 4, (void **)&back_buffer);
   }
-
-  EFI_GUID mouse_guid = EFI_SIMPLE_POINTER_PROTOCOL_GUID;
-  ST->BootServices->LocateProtocol(&mouse_guid, NULL, (void **)&g_mouse);
-  if (g_mouse)
-    g_mouse->Reset(g_mouse, TRUE);
 
   main_window.x = 100;
   main_window.y = 100;
@@ -125,31 +122,19 @@ void gui_draw_rect(UINT32 x, UINT32 y, UINT32 w, UINT32 h, UINT32 color) {
   UINT32 x2 = x + w - 1;
   UINT32 y2 = y + h - 1;
 
-  // Horizontal lines (top and bottom)
+  // Horizontal lines
   if (y < sh && x < sw) {
     UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
     uint32_t *p = &back_buffer[(UINT64)y * sw + x];
-#if defined(__x86_64__) || defined(__i386__)
-    UINT32 count = end - x + 1;
-    __asm__ volatile("rep stosl" : "+D"(p), "+c"(count) : "a"(color) : "memory");
-#else
-    for (UINT32 i = x; i <= end; i++)
-      *p++ = color;
-#endif
+    for (UINT32 i = x; i <= end; i++) *p++ = color;
   }
   if (y2 < sh && y2 != y && x < sw) {
     UINT32 end = (x2 >= sw) ? (sw - 1) : x2;
     uint32_t *p = &back_buffer[(UINT64)y2 * sw + x];
-#if defined(__x86_64__) || defined(__i386__)
-    UINT32 count = end - x + 1;
-    __asm__ volatile("rep stosl" : "+D"(p), "+c"(count) : "a"(color) : "memory");
-#else
-    for (UINT32 i = x; i <= end; i++)
-      *p++ = color;
-#endif
+    for (UINT32 i = x; i <= end; i++) *p++ = color;
   }
 
-  // Vertical lines (left and right)
+  // Vertical lines
   if (x < sw && y < sh) {
     UINT32 end = (y2 >= sh) ? (sh - 1) : y2;
     uint32_t *p = &back_buffer[(UINT64)y * sw + x];
@@ -172,7 +157,7 @@ void gui_draw_char(char c, UINT32 x, UINT32 y, UINT32 color, UINT32 bg_color, UI
   if ((uint8_t)c > 127)
     return;
   if (scale == 0) scale = 1;
-  char *glyph = font8x8_basic[(uint8_t)c];
+  const char *glyph = font8x8_basic[(uint8_t)c];
   
   if (scale == 1) {
     for (int i = 0; i < 8; i++) {
@@ -242,7 +227,6 @@ void gui_draw_taskbar() {
     gui_draw_string("Computer", 15, y - 130, COLOR_TEXT_B, COLOR_WINDOW, 1);
     gui_draw_string("Control Panel", 15, y - 110, COLOR_TEXT_B, COLOR_WINDOW, 1);
     
-    // Shutdown button
     if (mouse_x >= 15 && mouse_x <= 140 && mouse_y >= (int)y - 50 && mouse_y <= (int)y - 20) {
         gui_fill_rect(10, y - 45, 140, 25, COLOR_TITLEBAR);
         gui_draw_string("Shutdown", 15, y - 40, COLOR_TEXT_W, COLOR_TITLEBAR, 1);
@@ -268,25 +252,18 @@ void gui_draw_window(UINT32 x, UINT32 y, UINT32 w, UINT32 h, const char *title,
   gui_fill_rect(draw_x + 2, draw_y + 2, draw_w - 4, 20, COLOR_TITLEBAR);
   gui_draw_string(title, draw_x + 5, draw_y + 5, COLOR_TEXT_W, COLOR_TITLEBAR, 1);
 
-  // Close button
   gui_fill_rect(draw_x + draw_w - 20, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 20, draw_y + 4, 16, 16, COLOR_TEXT_B);
-  gui_draw_string("X", draw_x + draw_w - 16, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR, 1);
+  gui_draw_string("X", draw_x + draw_w - 16, draw_y + 8, COLOR_TEXT_B, COLOR_TASKBAR, 1);
 
-  // Maximize button
   gui_fill_rect(draw_x + draw_w - 40, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 40, draw_y + 4, 16, 16, COLOR_TEXT_B);
-  gui_draw_string("M", draw_x + draw_w - 36, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR, 1);
+  gui_draw_string("M", draw_x + draw_w - 36, draw_y + 8, COLOR_TEXT_B, COLOR_TASKBAR, 1);
 
-  // Minimize button
   gui_fill_rect(draw_x + draw_w - 60, draw_y + 4, 16, 16, COLOR_TASKBAR);
   gui_draw_rect(draw_x + draw_w - 60, draw_y + 4, 16, 16, COLOR_TEXT_B);
-  gui_draw_string("_", draw_x + draw_w - 56, draw_y + 8, COLOR_TEXT_B,
-                  COLOR_TASKBAR, 1);
+  gui_draw_string("_", draw_x + draw_w - 56, draw_y + 8, COLOR_TEXT_B, COLOR_TASKBAR, 1);
 
-  // Resize handle (bottom-right)
   if (!maximized) {
       gui_draw_pixel(draw_x + draw_w - 3, draw_y + draw_h - 3, COLOR_TEXT_B);
       gui_draw_pixel(draw_x + draw_w - 5, draw_y + draw_h - 3, COLOR_TEXT_B);
@@ -295,7 +272,6 @@ void gui_draw_window(UINT32 x, UINT32 y, UINT32 w, UINT32 h, const char *title,
 }
 
 void gui_draw_cursor(UINT32 x, UINT32 y) {
-  // Visible Arrow Cursor
   for (int i = 0; i < 15; i++) {
     for (int j = 0; j < i; j++) {
       gui_draw_pixel(x + j, y + i, COLOR_TEXT_B);
@@ -349,10 +325,8 @@ void term_draw() {
     return;
   UINT32 draw_x = main_window.maximized ? 0 : main_window.x;
   UINT32 draw_y = main_window.maximized ? 0 : main_window.y;
-  UINT32 draw_w =
-      main_window.maximized ? gui_boot_info.fb_width : main_window.w;
-  UINT32 draw_h =
-      main_window.maximized ? gui_boot_info.fb_height - 40 : main_window.h;
+  UINT32 draw_w = main_window.maximized ? gui_boot_info.fb_width : main_window.w;
+  UINT32 draw_h = main_window.maximized ? gui_boot_info.fb_height - 40 : main_window.h;
 
   UINT32 scale = main_window.maximized ? 2 : 1;
   UINT32 term_x = draw_x + 4;
@@ -374,25 +348,21 @@ void gui_term_print(const char *str) { term_print(str); }
 
 BOOLEAN gui_poll_mouse() {
   BOOLEAN changed = FALSE;
-  if (g_mouse) {
-    EFI_SIMPLE_POINTER_STATE state;
-    if (g_mouse->GetState(g_mouse, &state) == EFI_SUCCESS) {
-      // Drastically reduced sensitivity for real hardware (divisor increased from 1000 to 50000)
-      int dx = state.RelativeMovementX / 50000;
-      int dy = state.RelativeMovementY / 50000;
-      if (dx != 0 || dy != 0 || state.LeftButton != mouse_lb) {
-          mouse_x += dx;
-          mouse_y += dy;
-          if (mouse_x < 0) mouse_x = 0;
-          if (mouse_y < 0) mouse_y = 0;
-          if ((UINT32)mouse_x >= gui_boot_info.fb_width) mouse_x = gui_boot_info.fb_width - 1;
-          if ((UINT32)mouse_y >= gui_boot_info.fb_height) mouse_y = gui_boot_info.fb_height - 1;
-          
-          prev_mouse_lb = mouse_lb;
-          mouse_lb = state.LeftButton;
-          changed = TRUE;
-      }
-    }
+
+  int32_t k_mouse_x, k_mouse_y;
+  uint8_t k_buttons;
+  // Pass screen dimensions so the driver can clamp the accumulator in place,
+  // preventing cursor-stuck-at-edge drift.
+  mouse_get_state(&k_mouse_x, &k_mouse_y, &k_buttons,
+                  (int32_t)gui_boot_info.fb_width,
+                  (int32_t)gui_boot_info.fb_height);
+
+  if (mouse_x != k_mouse_x || mouse_y != k_mouse_y || mouse_lb != (k_buttons & 1)) {
+      prev_mouse_lb = mouse_lb;
+      mouse_x = k_mouse_x;
+      mouse_y = k_mouse_y;
+      mouse_lb = (k_buttons & 1) ? TRUE : FALSE;
+      changed = TRUE;
   }
 
   UINT32 draw_x = main_window.maximized ? 0 : main_window.x;
@@ -400,7 +370,6 @@ BOOLEAN gui_poll_mouse() {
   UINT32 draw_w = main_window.maximized ? gui_boot_info.fb_width : main_window.w;
   UINT32 draw_h = main_window.maximized ? gui_boot_info.fb_height - 40 : main_window.h;
 
-  // Window dragging and resizing (only if not minimized)
   if (mouse_lb && !prev_mouse_lb && !main_window.minimized) {
     if (!main_window.maximized) {
         if (mouse_x >= (int)draw_x + 2 && mouse_x <= (int)(draw_x + draw_w - 60) &&
@@ -409,25 +378,21 @@ BOOLEAN gui_poll_mouse() {
           main_window.drag_off_x = mouse_x - (int)main_window.x;
           main_window.drag_off_y = mouse_y - (int)main_window.y;
         }
-        // Resize initiation
         if (mouse_x >= (int)(draw_x + draw_w - 20) && mouse_x <= (int)(draw_x + draw_w) &&
             mouse_y >= (int)(draw_y + draw_h - 20) && mouse_y <= (int)(draw_y + draw_h)) {
             main_window.resizing = TRUE;
         }
     }
   }
-  
   if (!mouse_lb) {
     main_window.dragging = FALSE;
     main_window.resizing = FALSE;
   }
-  
   if (main_window.dragging) {
     main_window.x = mouse_x - main_window.drag_off_x;
     main_window.y = mouse_y - main_window.drag_off_y;
     changed = TRUE;
   }
-
   if (main_window.resizing) {
       main_window.w = mouse_x - (int)main_window.x;
       main_window.h = mouse_y - (int)main_window.y;
@@ -435,10 +400,7 @@ BOOLEAN gui_poll_mouse() {
       if (main_window.h < 100) main_window.h = 100;
       changed = TRUE;
   }
-
-  // Window buttons and Start menu
   if (mouse_lb && !prev_mouse_lb) {
-    // Taskbar restore (FIXED: Improved hit detection)
     if (main_window.minimized) {
         UINT32 task_y = gui_boot_info.fb_height - 40;
         if (mouse_x >= 70 && mouse_x <= 190 && mouse_y >= (int)task_y + 5 && mouse_y <= (int)task_y + 35) {
@@ -446,16 +408,13 @@ BOOLEAN gui_poll_mouse() {
             changed = TRUE;
         }
     }
-
     if (!main_window.minimized) {
-        // Maximize
         if (mouse_x >= (int)(draw_x + draw_w - 40) &&
             mouse_x <= (int)(draw_x + draw_w - 24) && mouse_y >= (int)draw_y + 4 &&
             mouse_y <= (int)draw_y + 20) {
           main_window.maximized = !main_window.maximized;
           changed = TRUE;
         }
-        // Minimize
         if (mouse_x >= (int)(draw_x + draw_w - 60) &&
             mouse_x <= (int)(draw_x + draw_w - 44) && mouse_y >= (int)draw_y + 4 &&
             mouse_y <= (int)draw_y + 20) {
@@ -463,8 +422,6 @@ BOOLEAN gui_poll_mouse() {
           changed = TRUE;
         }
     }
-
-    // Start button
     UINT32 tb_y = gui_boot_info.fb_height - 40;
     if (mouse_x >= 5 && mouse_x <= 65 && mouse_y >= (int)tb_y + 5 && mouse_y <= (int)tb_y + 35) {
       start_menu_open = !start_menu_open;
@@ -477,26 +434,19 @@ BOOLEAN gui_poll_mouse() {
       changed = TRUE;
     }
   }
-  
   return changed;
 }
 
 char gui_term_getchar() {
   BOOLEAN needs_redraw = TRUE;
   while (1) {
+    if (gui_poll_mouse()) needs_redraw = TRUE;
     EFI_INPUT_KEY key;
     if (gui_ST->ConIn->ReadKeyStroke(gui_ST->ConIn, &key) == EFI_SUCCESS) {
-      if (key.UnicodeChar == '\r')
-        return '\n';
-      if (key.UnicodeChar != 0)
-        return (char)key.UnicodeChar;
+      if (key.UnicodeChar == '\r') return '\n';
+      if (key.UnicodeChar != 0) return (char)key.UnicodeChar;
       needs_redraw = TRUE;
     }
-
-    if (gui_poll_mouse()) {
-        needs_redraw = TRUE;
-    }
-
     if (needs_redraw) {
         gui_draw_desktop();
         gui_draw_taskbar();
@@ -508,11 +458,10 @@ char gui_term_getchar() {
         gui_swap_buffers();
         needs_redraw = FALSE;
     }
-    
-    gui_ST->BootServices->Stall(10000); // ~100 FPS check, but redraw only if needed
+    // High-frequency polling for touch and mouse snappiness
+    gui_ST->BootServices->Stall(10); 
   }
 }
-
 
 void gui_start() {
   gui_draw_desktop();

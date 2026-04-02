@@ -59,9 +59,11 @@ fi
 # --- Assemble QEMU command ---
 QEMU_CMD=(
     "qemu-system-x86_64"
-    "-m" "256M"
+    "-m" "512M"
     "-net" "none"
+    "-device" "virtio-gpu-pci"
     "-drive" "file=$IMAGE_PATH,format=raw"
+    "-device usb-tablet"
 )
 
 # Use the more robust -pflash method for UEFI

@@ -32,7 +32,6 @@ stack_top:
 .extern timer_handler
 
 irq0_isr:
-    # Save scratch registers (caller-saved in System V AMD64 ABI)
     pushq %rax
     pushq %rcx
     pushq %rdx
@@ -45,7 +44,62 @@ irq0_isr:
 
     call timer_handler
 
-    # Restore scratch registers
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %rax
+
+    iretq
+
+.global irq1_isr
+.extern keyboard_handler
+
+irq1_isr:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    call keyboard_handler
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %rax
+
+    iretq
+
+.global irq12_isr
+.extern mouse_handler_v2
+
+irq12_isr:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    call mouse_handler_v2
+
     popq %r11
     popq %r10
     popq %r9

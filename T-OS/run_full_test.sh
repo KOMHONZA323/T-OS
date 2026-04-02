@@ -44,8 +44,9 @@ fi
 # Assemble the full QEMU command
 QEMU_CMD=(
     "qemu-system-x86_64"
-    "-m" "256M"
+    "-m" "512M"
     "-net" "none"
+    "-device" "virtio-gpu-pci"
     "-drive" "file=build/tos.img,format=raw"
     "-drive" "if=pflash,format=raw,readonly=on,file=$OVMF_CODE_PATH"
     "-display" "none"

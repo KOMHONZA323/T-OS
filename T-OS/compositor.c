@@ -1,5 +1,6 @@
 #include "compositor.h"
 #include "gui/font_renderer.h"
+#include "gui/mouse_event.h"
 
 // Basic assumptions requested by prompt
 extern void* kmalloc(uint64_t size);
@@ -7,6 +8,43 @@ extern void* kmalloc(uint64_t size);
 static GOP_Info g_info;
 static uint32_t* double_buffer = NULL;
 static UIState ui_state;
+
+// Phase 4: Window Manager Integration
+void compositor_draw_cursor(void) {
+    uint32_t x = ui_state.mouse_x;
+    uint32_t y = ui_state.mouse_y;
+    uint32_t color = 0xFFFFFF; // White cursor
+
+    // Simple arrow cursor
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j <= i; j++) {
+            compositor_put_pixel(x + j, y + i, color);
+        }
+    }
+}
+
+void compositor_update_mouse(void) {
+    MousePacket mp;
+    while (mouse_queue_pop(&mp)) {
+        ui_state.mouse_x += mp.dx;
+        ui_state.mouse_y -= mp.dy; // PS/2 Y is inverted
+
+        // Phase 4, Req 3: Clamp to screen resolution
+        if (ui_state.mouse_x < 0) ui_state.mouse_x = 0;
+        if (ui_state.mouse_y < 0) ui_state.mouse_y = 0;
+        if (ui_state.mouse_x >= (int32_t)g_info.fb_width) ui_state.mouse_x = g_info.fb_width - 1;
+        if (ui_state.mouse_y >= (int32_t)g_info.fb_height) ui_state.mouse_y = g_info.fb_height - 1;
+
+        ui_state.mouse_buttons = (mp.left_button ? 1 : 0) | (mp.right_button ? 2 : 0) | (mp.middle_button ? 4 : 0);
+
+        // Phase 4, Req 4: Trigger Click Event on transition 0 -> 1
+        if ((ui_state.mouse_buttons & 1) && !(ui_state.last_buttons & 1)) {
+            // Left click event
+            compositor_toggle_theme();
+        }
+        ui_state.last_buttons = ui_state.mouse_buttons;
+    }
+}
 
 // Phase 1 Functions
 void compositor_init(GOP_Info* info) {
@@ -23,6 +61,10 @@ void compositor_init(GOP_Info* info) {
     ui_state.term_y = (info->fb_height - ui_state.term_h) / 2;
     ui_state.cur_x = 0;
     ui_state.cur_y = 0;
+    ui_state.mouse_x = info->fb_width / 2;
+    ui_state.mouse_y = info->fb_height / 2;
+    ui_state.mouse_buttons = 0;
+    ui_state.last_buttons = 0;
 
     compositor_draw_desktop();
 }
@@ -110,7 +152,7 @@ void compositor_print(const char* str, uint32_t color) {
         } else if (*str == '\r') {
             ui_state.cur_x = 0;
         } else {
-            draw_char(*str, ui_state.term_x + 5 + ui_state.cur_x, ui_state.term_y + 32 + 5 + ui_state.cur_y, color);
+            draw_char_local(*str, ui_state.term_x + 5 + ui_state.cur_x, ui_state.term_y + 32 + 5 + ui_state.cur_y, color);
             ui_state.cur_x += 8;
         }
         
@@ -155,43 +197,41 @@ static uint32_t blend_colors(uint32_t fg, uint32_t bg, uint8_t alpha) {
     return (r << 16) | (g << 8) | b;
 }
 
+static void draw_icon(uint32_t x, uint32_t y, uint32_t color, const char* label) {
+    compositor_draw_rect(x + 8, y, 16, 16, color);
+    compositor_draw_rect(x + 4, y + 16, 24, 4, 0xAAAAAA); // Base
+    compositor_draw_string(label, x, y + 24, 0xFFFFFF);
+}
+
 static void draw_aero_theme() {
-    compositor_draw_rect(0, 0, g_info.fb_width, g_info.fb_height, 0x103050); 
+    // Radial-like background (dark blue)
+    compositor_draw_rect(0, 0, g_info.fb_width, g_info.fb_height, 0x003b6f); 
     
-    uint32_t taskbar_h = 40;
+    // Desktop Icons
+    draw_icon(40, 40, 0x00A4FF, "Computer");
+    draw_icon(40, 100, 0xFFA500, "Documents");
+    draw_icon(40, 160, 0x00FF00, "Browser");
+
+    uint32_t taskbar_h = 48;
     uint32_t taskbar_y = g_info.fb_height - taskbar_h;
-
-    uint32_t r_step = (0x10 << 16) / taskbar_h;
-    uint32_t g_step = (0x20 << 16) / taskbar_h;
-    uint32_t b_step = (0x40 << 16) / taskbar_h;
-
-    uint32_t r_acc = 0x20 << 16;
-    uint32_t g_acc = 0x40 << 16;
-    uint32_t b_acc = 0x80 << 16;
-
-    uint32_t half_h = taskbar_h / 2;
-
+    
+    // Glass taskbar (blended)
     for (uint32_t dy = 0; dy < taskbar_h; dy++) {
-        uint8_t r = r_acc >> 16;
-        uint8_t g = g_acc >> 16;
-        uint8_t b = b_acc >> 16;
-
-        if (dy < half_h) { r += 0x20; g += 0x20; b += 0x20; }
-        uint32_t color = (r << 16) | (g << 8) | b;
-        compositor_draw_rect(0, taskbar_y + dy, g_info.fb_width, 1, color);
-
-        r_acc += r_step;
-        g_acc += g_step;
-        b_acc += b_step;
+        for (uint32_t x = 0; x < g_info.fb_width; x++) {
+            uint32_t bg = 0x003b6f;
+            compositor_put_pixel(x, taskbar_y + dy, blend_colors(0x0f172a, bg, 150));
+        }
     }
     
-    uint32_t sb_x = 10, sb_y = taskbar_y + 4;
-    compositor_draw_rect(sb_x, sb_y, 32, 32, 0x00A0FF);
-    compositor_draw_rect(sb_x+4, sb_y+4, 10, 10, 0xFF4040);
-    compositor_draw_rect(sb_x+18, sb_y+4, 10, 10, 0x40FF40);
-    compositor_draw_rect(sb_x+4, sb_y+18, 10, 10, 0x4040FF);
-    compositor_draw_rect(sb_x+18, sb_y+18, 10, 10, 0xFFFF40);
+    // Start Button (Circular-ish)
+    compositor_draw_rect(10, taskbar_y + 4, 40, 40, 0x005fad);
+    compositor_draw_string("T", 24, taskbar_y + 16, 0xFFFFFF);
     
+    // Active App Tab
+    compositor_draw_rect(60, taskbar_y + 4, 120, 40, 0x55FFFFFF); // Transparent white
+    compositor_draw_string("Terminal", 80, taskbar_y + 16, 0x000000);
+
+    // Window with Aero Glass border
     uint32_t border = 8;
     for (uint32_t dy = 0; dy < ui_state.term_h + border * 2; dy++) {
         for (uint32_t dx = 0; dx < ui_state.term_w + border * 2; dx++) {
@@ -199,28 +239,140 @@ static void draw_aero_theme() {
             uint32_t x = ui_state.term_x - border + dx;
             uint32_t y = ui_state.term_y - border + dy;
             if (x < g_info.fb_width && y < g_info.fb_height) {
-                uint32_t bg = double_buffer[y * g_info.fb_pitch + x];
+                uint32_t bg = 0x003b6f;
                 double_buffer[y * g_info.fb_pitch + x] = blend_colors(0x88CCFF, bg, 100);
             }
         }
     }
+    
+    compositor_draw_string("T-OS Explorer", ui_state.term_x + 10, ui_state.term_y + 8, 0x000000);
     compositor_draw_rect(ui_state.term_x + ui_state.term_w - 40, ui_state.term_y, 32, 24, 0xCC0000);
     compositor_draw_rect(ui_state.term_x, ui_state.term_y + 32, ui_state.term_w, ui_state.term_h - 32, 0x000000);
+    
+    // Clock
+    compositor_draw_string("10:42 PM", g_info.fb_width - 80, taskbar_y + 16, 0xFFFFFF);
+}
+
+static void draw_cyber_biolume_theme() {
+    // Abyss background
+    compositor_draw_rect(0, 0, g_info.fb_width, g_info.fb_height, 0x0e0e0e);
+    
+    // Ambient Glow (subtle rects)
+    compositor_draw_rect(g_info.fb_width/4, g_info.fb_height/4, 200, 200, 0x010505);
+
+    // Top Bar
+    compositor_draw_rect(0, 0, g_info.fb_width, 32, 0x0e0e0e);
+    compositor_draw_rect(0, 31, g_info.fb_width, 1, 0x00f5d4); // Cyan line
+    compositor_draw_string("T-OS BIOLUME", 20, 8, 0x00f5d4);
+    compositor_draw_string("14:02:59 KRNL_ACTIVE", g_info.fb_width - 200, 8, 0x00f5d4);
+
+    // Terminal window
+    uint32_t border = 1;
+    compositor_draw_rect(ui_state.term_x - border, ui_state.term_y - border, ui_state.term_w + border*2, ui_state.term_h + border*2, 0x3300f5d4);
+    compositor_draw_rect(ui_state.term_x, ui_state.term_y, ui_state.term_w, 32, 0x202020);
+    compositor_draw_string("root@t-os: ~/kernel/bio_sync", ui_state.term_x + 10, ui_state.term_y + 8, 0x83948f);
+    compositor_draw_rect(ui_state.term_x, ui_state.term_y + 32, ui_state.term_w, ui_state.term_h - 32, 0x050505);
+
+    // Biolume Load Widget
+    uint32_t wx = g_info.fb_width - 250, wy = 100, ww = 200, wh = 250;
+    compositor_draw_rect(wx, wy, ww, wh, 0x151515);
+    compositor_draw_rect(wx, wy, ww, 2, 0x00f5d4);
+    compositor_draw_string("BIOLUME_LOAD", wx + 40, wy + 20, 0x00f5d4);
+    
+    // Progress Bars
+    compositor_draw_string("Neural Sync", wx + 10, wy + 60, 0x83948f);
+    compositor_draw_rect(wx + 10, wy + 80, 180, 4, 0x222222);
+    compositor_draw_rect(wx + 10, wy + 80, 150, 4, 0x00f5d4); // 84%
+    
+    compositor_draw_string("Core Temp", wx + 10, wy + 110, 0x83948f);
+    compositor_draw_rect(wx + 10, wy + 130, 180, 4, 0x222222);
+    compositor_draw_rect(wx + 10, wy + 130, 60, 4, 0x94d3c3); // 32%
+    
+    // Bottom Dock
+    uint32_t dock_w = 400, dock_h = 50;
+    uint32_t dock_x = (g_info.fb_width - dock_w) / 2;
+    uint32_t dock_y = g_info.fb_height - 70;
+    compositor_draw_rect(dock_x, dock_y, dock_w, dock_h, 0x202020);
+    compositor_draw_rect(dock_x, dock_y, dock_w, 1, 0x33d7fff3);
+    compositor_draw_string("HOME  TERM  FILES  NODES  MEDIA  POWER", dock_x + 20, dock_y + 16, 0xd7fff3);
+}
+
+static void draw_bios_theme() {
+    // Classic BIOS Blue
+    compositor_draw_rect(0, 0, g_info.fb_width, g_info.fb_height, 0x0000AA);
+    
+    // Grey header
+    compositor_draw_rect(20, 20, g_info.fb_width - 40, 30, 0xAAAAAA);
+    compositor_draw_string("T-OS Setup Utility - Copyright (C) 2026", 40, 30, 0x000000);
+    
+    // Main setup area
+    compositor_draw_rect(20, 60, g_info.fb_width - 40, g_info.fb_height - 100, 0xAAAAAA);
+    compositor_draw_rect(ui_state.term_x, ui_state.term_y, ui_state.term_w, ui_state.term_h, 0x000000);
+}
+
+static void draw_tgo_editor() {
+    // Editor Background
+    compositor_draw_rect(0, 0, g_info.fb_width, g_info.fb_height, 0x1E1E1E);
+    
+    // Top Bar (TGO IDE)
+    compositor_draw_rect(0, 0, g_info.fb_width, 32, 0x333333);
+    compositor_draw_string("TGO IDE v1.0 - [Bio-Sync LSP Active]", 20, 8, 0x00FF00);
+    compositor_draw_string("Live Compile: READY", g_info.fb_width - 200, 8, 0xFFFF00);
+
+    // Sidebar (Files)
+    compositor_draw_rect(0, 32, 150, g_info.fb_height - 32, 0x252526);
+    compositor_draw_string("FILES", 10, 42, 0x888888);
+    compositor_draw_string("main.c", 20, 70, 0x00A4FF);
+    compositor_draw_string("shader.tgg", 20, 90, 0x00F5D4);
+    compositor_draw_string("kernel.hc", 20, 110, 0xFFA500);
+
+    // Code Area (Mocking some code with "LSP" highlighting)
+    uint32_t cx = 170, cy = 50;
+    compositor_draw_string("// T-OS HolyC Kernel Snippet", cx, cy, 0x6A9955);
+    cy += 20;
+    compositor_draw_string("U0 ", cx, cy, 0x569CD6); // HolyC U0
+    compositor_draw_string("Main() {", cx + 24, cy, 0xD4D4D4);
+    cy += 20;
+    compositor_draw_string("    Print(", cx, cy, 0xDCDCAA);
+    compositor_draw_string("\"Hello T-OS\"", cx + 80, cy, 0xCE9178);
+    compositor_draw_string(");", cx + 180, cy, 0xD4D4D4);
+    cy += 20;
+    compositor_draw_string("}", cx, cy, 0xD4D4D4);
+
+    // Compile Error Console (Phase 3: Compile Errors check)
+    uint32_t console_y = g_info.fb_height - 150;
+    compositor_draw_rect(150, console_y, g_info.fb_width - 150, 150, 0x000000);
+    compositor_draw_rect(150, console_y, g_info.fb_width - 150, 2, 0xFF0000);
+    compositor_draw_string("PROBLEMS", 170, console_y + 10, 0xFFFFFF);
+    
+    // Simulating a compiler error check
+    compositor_draw_string("Error: Unknown target '-target=tgo' in shader.tgg", 170, console_y + 40, 0xFF5555);
+    compositor_draw_string("      Did you mean '-target=tgg'?", 170, console_y + 60, 0xFFAAAA);
+    compositor_draw_string("[LSP] issue: [ERR_MISPELLED_TARGET_0x42]", 170, console_y + 90, 0xFF0000);
 }
 
 void compositor_draw_desktop(void) {
-    if (ui_state.current_theme == THEME_FEDORA_DARK) draw_fedora_theme();
-    else draw_aero_theme();
+    switch (ui_state.current_theme) {
+        case THEME_FEDORA_DARK: draw_fedora_theme(); break;
+        case THEME_WINDOWS_AERO: draw_aero_theme(); break;
+        case THEME_CYBER_BIOLUME: draw_cyber_biolume_theme(); break;
+        case THEME_BIOS_DEFAULT: draw_bios_theme(); break;
+        case THEME_TGO_EDITOR: draw_tgo_editor(); break;
+    }
     ui_state.cur_x = 0;
     ui_state.cur_y = 0;
-    compositor_swap_buffers();
 }
 
 void compositor_toggle_theme(void) {
-    ui_state.current_theme = (ui_state.current_theme == THEME_FEDORA_DARK) ? THEME_WINDOWS_AERO : THEME_FEDORA_DARK;
+    ui_state.current_theme = (ui_state.current_theme + 1) % 5;
     compositor_draw_desktop();
+    compositor_print("THEME SWITCHED\n", 0x00FF00);
 }
 
 void compositor_handle_interrupt(uint8_t scancode) {
-    if (scancode == 0x58) compositor_toggle_theme();
+    // 0x58 is F12 in PS/2 Set 1
+    if (scancode == 0x58) {
+        compositor_print("F12 PRESSED - TOGGLING THEME\n", 0x00FF00);
+        compositor_toggle_theme();
+    }
 }

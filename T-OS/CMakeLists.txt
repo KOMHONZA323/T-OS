@@ -8,17 +8,17 @@ project(T-OS C ASM)
 
 # 1. Bootloader
 set(UEFI_CC x86_64-w64-mingw32-gcc)
-set(UEFI_CFLAGS -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar -mno-red-zone -maccumulate-outgoing-args -Wall)
+set(UEFI_CFLAGS -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar -mno-red-zone -maccumulate-outgoing-args -Wall -I${CMAKE_CURRENT_SOURCE_DIR})
 set(UEFI_LDFLAGS -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main)
 
 add_custom_command(OUTPUT bootx64.efi
-    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h ${CMAKE_CURRENT_SOURCE_DIR}/bootinfo.h
+    COMMAND ${UEFI_CC} ${UEFI_CFLAGS} ${UEFI_LDFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/t_ps2_mouse.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/mouse_event_queue.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c -o ${CMAKE_BINARY_DIR}/bootx64.efi
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/main.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/gui.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/font_renderer.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/t_ps2_mouse.c ${CMAKE_CURRENT_SOURCE_DIR}/gui/mouse_event_queue.c ${CMAKE_CURRENT_SOURCE_DIR}/libc.c ${CMAKE_CURRENT_SOURCE_DIR}/uefi.h ${CMAKE_CURRENT_SOURCE_DIR}/bootinfo.h
 )
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c)
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c gui/t_ps2_mouse.c gui/mouse_event_queue.c t_hal_pci.c t_hal_gpu.c)
 set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64 -I${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(OUTPUT kernel.bin
@@ -29,7 +29,20 @@ add_custom_command(OUTPUT kernel.bin
 )
 add_custom_target(kernel ALL DEPENDS kernel.bin)
 
-# 3. Disk Image (GPT + ESP)
+# 3. Host Tools & Shaders
+add_custom_command(OUTPUT tgc_host
+    COMMAND cc ${CMAKE_CURRENT_SOURCE_DIR}/toolchain/src/tgc.c -o ${CMAKE_BINARY_DIR}/tgc_host
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/toolchain/src/tgc.c
+)
+
+add_custom_command(OUTPUT raycaster.tgg.bin
+    COMMAND ${CMAKE_BINARY_DIR}/tgc_host -target=tgg ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.tgg
+    COMMAND mv ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.tgg.bin ${CMAKE_BINARY_DIR}/raycaster.tgg.bin
+    DEPENDS tgc_host ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.tgg
+)
+add_custom_target(shaders ALL DEPENDS raycaster.tgg.bin)
+
+# 4. Disk Image (GPT + ESP)
 add_custom_target(image ALL
     COMMAND dd if=/dev/zero of=${CMAKE_BINARY_DIR}/tos.img bs=1M count=66
     COMMAND parted -s ${CMAKE_BINARY_DIR}/tos.img mklabel gpt
@@ -43,11 +56,13 @@ add_custom_target(image ALL
     COMMAND mmd -i ${CMAKE_BINARY_DIR}/part.img ::/src
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/bootx64.efi ::/EFI/BOOT/BOOTX64.EFI
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/kernel.bin ::/kernel.bin
+    COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/raycaster.tgg.bin ::/raycaster.bin
+    COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.c ::/raycaster.c
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/hello.c ::/hello.c
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/test.hc ::/test.hc
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/game.c ::/game.c
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/HOWTO.txt ::/HOWTO.txt
     COMMAND dd if=${CMAKE_BINARY_DIR}/part.img of=${CMAKE_BINARY_DIR}/tos.img bs=1M seek=1 conv=notrunc
     COMMAND rm -f ${CMAKE_BINARY_DIR}/part.img
-    DEPENDS boot kernel
+    DEPENDS boot kernel shaders
 )

@@ -24,6 +24,10 @@ UINTN next_pid = 1;
 
 int gui_active = 0;
 
+EFI_SYSTEM_TABLE *ST;
+EFI_HANDLE ImgHandle;
+BootInfo global_boot_info;
+
 Process *create_process(Process *parent, CHAR16 *cmd);
 void execute_command(CHAR16 *cmd);
 
