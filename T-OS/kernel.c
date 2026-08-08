@@ -5,6 +5,8 @@
 #include "t_hal_gpu.h"
 #include "gui/t_ps2_mouse.h"
 #include "nsas_scheduler.h"
+#include "sched.h"
+#include "serial.h"
 #include <stdint.h>
 
 // A simple 8x8 font
@@ -86,12 +88,24 @@ static inline uint8_t inb(uint16_t port) {
 }
 
 volatile uint64_t timer_ticks = 0;
+static int scheduler_online = 0;
 
 void timer_handler() {
   timer_ticks++;
+
+  // NPU affinity accounting stays where it was; it does not touch the CPU.
   nsas_schedule();
-  // Send EOI to PIC master
+
+  int resched = scheduler_online ? sched_tick() : 0;
+
+  // The EOI has to go out before the context switch: once we switch stacks we
+  // are running some other thread and will not come back to this instruction
+  // until that thread is scheduled again, and the PIC would stay masked in the
+  // meantime.
   outb(0x20, 0x20);
+
+  if (resched)
+    sched_preempt();
 }
 
 void delay(uint64_t milliseconds) {
@@ -179,20 +193,99 @@ void keyboard_handler() {
   outb(0x20, 0x20);
 }
 
-// Simple bump allocator for kmalloc
-static uint8_t heap[1024 * 1024 * 4]; // 4MB heap
+// Simple bump allocator for kmalloc.
+//
+// 16 MB rather than 4: the compositor's double buffer alone is ~4 MB at
+// 1280x800, which used to leave only a few tens of kilobytes for every thread
+// stack in the system. Allocations are never freed, so headroom is cheap
+// insurance against a silent out-of-memory that returns NULL to a caller that
+// does not check.
+static uint8_t heap[1024 * 1024 * 16];
 static uint64_t heap_ptr = 0;
 
 void *kmalloc(uint64_t size) {
-  if (heap_ptr + size > sizeof(heap))
+  // Keep allocations 16-byte aligned; thread stacks and the double buffer both
+  // care.
+  size = (size + 15) & ~(uint64_t)15;
+  if (heap_ptr + size > sizeof(heap)) {
+    kprintf("kmalloc: out of memory requesting %lu bytes (%lu of %lu used)\n",
+            (unsigned long)size, (unsigned long)heap_ptr,
+            (unsigned long)sizeof(heap));
     return (void *)0;
+  }
   void *ptr = &heap[heap_ptr];
   heap_ptr += size;
   return ptr;
 }
 
+// Tiny text builders for the on-screen status panel. The compositor takes
+// plain strings, and kprintf goes to the serial port, so the desktop needs its
+// own formatting.
+static int str_append(char *dst, int pos, int cap, const char *s) {
+  while (*s && pos < cap - 1)
+    dst[pos++] = *s++;
+  return pos;
+}
+
+static int u64_append(char *dst, int pos, int cap, uint64_t v) {
+  char digits[24];
+  int d = 0;
+  if (v == 0)
+    digits[d++] = '0';
+  while (v && d < (int)sizeof(digits)) {
+    digits[d++] = (char)('0' + (v % 10));
+    v /= 10;
+  }
+  while (d-- > 0 && pos < cap - 1)
+    dst[pos++] = digits[d];
+  return pos;
+}
+
+// Desktop thread. It is the only writer to the compositor, which keeps the
+// on-screen terminal free of interleaving from the other threads, and it
+// sleeps between frames so it behaves like the interactive workload it is.
+static void thread_desktop(void *arg) {
+  (void)arg;
+
+  for (;;) {
+    compositor_update_mouse();
+    compositor_draw_desktop(); // repaints the desktop and resets the cursor
+
+    // Draw the status panel into the same frame, before the swap: the next
+    // frame's draw_desktop() would otherwise wipe it straight away.
+    char line[96];
+    int n = 0;
+    sched_thread_t *cur = sched_current();
+
+    n = str_append(line, n, sizeof(line), "T-OS scheduler   tick ");
+    n = u64_append(line, n, sizeof(line), sched_ticks());
+    n = str_append(line, n, sizeof(line), "   switches ");
+    n = u64_append(line, n, sizeof(line), sched_total_switches());
+    n = str_append(line, n, sizeof(line), "\n");
+    n = str_append(line, n, sizeof(line), "running: ");
+    n = str_append(line, n, sizeof(line), cur->name);
+    n = str_append(line, n, sizeof(line), "   runnable ");
+    n = u64_append(line, n, sizeof(line), sched_runnable_count());
+    n = str_append(line, n, sizeof(line), "\n");
+    line[n] = 0;
+    compositor_print(line, 0x00FF88);
+
+    compositor_draw_cursor();
+    compositor_swap_buffers();
+
+    sched_sleep(16); // ~60 Hz at a 1 kHz tick
+  }
+}
+
 void kmain(BootInfo *bi) {
   uint32_t *fb = (uint32_t *)bi->fb_base;
+
+  // Bring the serial console up first so everything after this point is
+  // visible on a headless VM (qemu -serial stdio).
+  serial_init();
+  kprintf("\n=== T-OS kernel entry ===\n");
+  kprintf("framebuffer %ux%u pitch=%u at %p\n", bi->fb_width, bi->fb_height,
+          bi->fb_pitch, (void *)bi->fb_base);
 
   // Clear screen to black
   uint32_t num_pixels = bi->fb_size / 4;
@@ -202,6 +295,7 @@ void kmain(BootInfo *bi) {
 
   // Initialize IDT and remap PIC
   idt_init();
+  idt_install_exceptions(); // report faults instead of triple-faulting
   pic_remap();
 
   // Set IRQ0 (vector 32) to our ISR handler. Attributes 0x8E = Present, Ring 0,
@@ -252,9 +346,6 @@ void kmain(BootInfo *bi) {
       compositor_print("No PCI GPU found\n", 0xFF0000);
   }
 
-  // Enable interrupts
-  __asm__ volatile("sti");
-
   // If we have a valid framebuffer, draw the success message
   if (bi->fb_base != 0 && bi->fb_width > 0 && bi->fb_height > 0) {
     uint32_t screen_center_x = bi->fb_width / 2;
@@ -272,13 +363,24 @@ void kmain(BootInfo *bi) {
   }
 
   compositor_print("Boot Success\n", 0x00FF00);
+  kprintf("boot complete, bringing up the CPU scheduler\n");
 
-  // Main Compositor Loop
-  while (1) {
-    compositor_update_mouse();
-    compositor_draw_desktop();
-    compositor_draw_cursor();
-    compositor_swap_buffers();
+  // ---- CPU scheduler ----
+  //
+  // From here on kmain is no longer a loop: it becomes the idle thread. Every
+  // other piece of work - the desktop, the demo workload - is a kernel thread
+  // that the timer interrupt preempts.
+  sched_init();
+  void sched_demo_start(void);
+  sched_demo_start();
+  sched_create_thread("desktop", thread_desktop, (void *)0, 1);
+
+  scheduler_online = 1;
+  __asm__ volatile("sti"); // enable interrupts: IRQ0 now drives preemption
+
+  sched_start(); // returns only if sched_stop() is ever called
+
+  kprintf("scheduler stopped; halting\n");
+  for (;;)
     __asm__ volatile("hlt");
-  }
 }

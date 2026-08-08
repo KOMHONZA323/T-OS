@@ -48,16 +48,44 @@ T-OS uses CMake for cross-compilation. The build process generates a bootable di
     make image
     ```
 
+## Booting
+
+`bootx64.efi` starts the UEFI shell and, after a three second countdown, loads
+`\kernel.bin` at 16 MB, exits boot services and jumps to it. Press any key
+during the countdown to stay in the shell instead; `kernel` boots it by hand
+from there.
+
+Once the kernel is up it starts the CPU scheduler and never returns to the
+firmware. See [`docs/scheduler.md`](docs/scheduler.md).
+
 ## Running in QEMU
 
 To test the OS in an emulator (QEMU with OVMF UEFI firmware):
 
 ```bash
-# From the build directory
-../scripts/run_qemu.sh
+./scripts/run_qemu.sh                     # graphical, serial on stdio
+./scripts/run_qemu.sh --headless          # no window
 ```
 
-Ensure you have `ovmf` installed. The script will attempt to locate `OVMF_CODE.fd` and `OVMF_VARS.fd` in standard system paths.
+For an unattended run - the scheduler demo prints its report to COM1 every
+three seconds:
+
+```bash
+./scripts/run_qemu.sh --headless --timeout 60 \
+    --serial-log sched.log --screenshot desktop.ppm
+```
+
+Ensure you have `ovmf` installed. `scripts/find_ovmf.sh` locates the firmware
+across the usual distribution layouts, including Debian's current
+`OVMF_CODE_4M.fd` naming.
+
+## Tests
+
+```bash
+./tests/run_tests.sh
+```
+
+Runs the `string16` tests and the CPU scheduler suite, both on the host.
 
 ## Flashing to USB (Real Hardware)
 
@@ -79,6 +107,10 @@ See `scripts/FLASHIT.txt` for more details.
 *   `boot/`: UEFI Bootloader source code (GNU-EFI).
 *   `cmake/`: CMake toolchain files for cross-compilation.
 *   `scripts/`: Helper scripts for building images and running QEMU.
+*   `docs/`: Design notes, including the CPU scheduler.
+*   `sched.*`, `switch.s`: Preemptive MLFQ CPU scheduler and context switch.
+*   `serial.c`: COM1 console and `kprintf`.
+*   `exceptions.s`, `idt.c`: Fault reporting instead of silent triple faults.
 *   `kernel/`: (Future) Kernel core.
 *   `drivers/`: (Future) Hardware drivers.
 *   `gui/`: (Future) Graphics and Windowing system.

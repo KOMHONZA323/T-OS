@@ -18,13 +18,17 @@ add_custom_command(OUTPUT bootx64.efi
 add_custom_target(boot ALL DEPENDS bootx64.efi)
 
 # 2. Kernel
-add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c gui/t_ps2_mouse.c gui/mouse_event_queue.c t_hal_pci.c t_hal_gpu.c nsas_scheduler.c t_sync.c tests/test_nsas.c)
+add_library(kernel_obj OBJECT kernel.c idt.c entry.s compositor.c gui/font_renderer.c gui/t_ps2_mouse.c gui/mouse_event_queue.c t_hal_pci.c t_hal_gpu.c nsas_scheduler.c t_sync.c tests/test_nsas.c serial.c sched.c sched_arch.c sched_demo.c switch.s exceptions.s)
 set_target_properties(kernel_obj PROPERTIES COMPILE_FLAGS "-ffreestanding -mno-red-zone -m64 -I${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(OUTPUT kernel.bin
-    COMMAND ld -nostdlib -Ttext 0x1000000 -e _start $<TARGET_OBJECTS:kernel_obj> -o ${CMAKE_BINARY_DIR}/kernel.elf
+    COMMAND ld -nostdlib -T ${CMAKE_CURRENT_SOURCE_DIR}/kernel.ld $<TARGET_OBJECTS:kernel_obj> -o ${CMAKE_BINARY_DIR}/kernel.elf
     COMMAND objcopy -O binary ${CMAKE_BINARY_DIR}/kernel.elf ${CMAKE_BINARY_DIR}/kernel.bin
-    DEPENDS kernel_obj compositor.h idt.h bootinfo.h
+    # Depending on the kernel_obj *target* alone is not enough: an object
+    # library produces no file, so make treats it as order-only and the link
+    # step goes stale whenever only a source file changes - silently shipping
+    # a kernel.bin from an earlier build. Depend on the objects themselves.
+    DEPENDS kernel_obj $<TARGET_OBJECTS:kernel_obj> compositor.h idt.h bootinfo.h sched.h serial.h ${CMAKE_CURRENT_SOURCE_DIR}/kernel.ld
     COMMAND_EXPAND_LISTS
 )
 add_custom_target(kernel ALL DEPENDS kernel.bin)
@@ -43,6 +47,13 @@ add_custom_command(OUTPUT raycaster.tgg.bin
 add_custom_target(shaders ALL DEPENDS raycaster.tgg.bin)
 
 # 4. Disk Image (GPT + ESP)
+# DOOM1.WAD is not redistributable, so it is only copied in when present.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/DOOM1.WAD)
+    set(WAD_COPY_COMMAND COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/DOOM1.WAD ::/DOOM1.WAD)
+else()
+    set(WAD_COPY_COMMAND COMMAND ${CMAKE_COMMAND} -E echo "DOOM1.WAD not found - skipping it")
+endif()
+
 add_custom_target(image ALL
     COMMAND dd if=/dev/zero of=${CMAKE_BINARY_DIR}/tos.img bs=1M count=66
     COMMAND parted -s ${CMAKE_BINARY_DIR}/tos.img mklabel gpt
@@ -56,7 +67,7 @@ add_custom_target(image ALL
     COMMAND mmd -i ${CMAKE_BINARY_DIR}/part.img ::/src
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/bootx64.efi ::/EFI/BOOT/BOOTX64.EFI
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/kernel.bin ::/kernel.bin
-    COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/DOOM1.WAD ::/DOOM1.WAD
+    ${WAD_COPY_COMMAND}
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_BINARY_DIR}/raycaster.tgg.bin ::/raycaster.bin
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/apps/src/raycaster.c ::/raycaster.c
     COMMAND mcopy -i ${CMAKE_BINARY_DIR}/part.img ${CMAKE_CURRENT_SOURCE_DIR}/hello.c ::/hello.c
