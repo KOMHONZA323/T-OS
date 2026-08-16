@@ -223,17 +223,44 @@ typedef EFI_STATUS (EFIAPI *EFI_LOCATE_PROTOCOL)(EFI_GUID *Protocol, void *Regis
 typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_POOL)(UINT32 PoolType, UINTN Size, void **Buffer);
 typedef EFI_STATUS (EFIAPI *EFI_FREE_POOL)(void *Buffer);
 typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_PAGES)(UINT32 Type, UINT32 MemoryType, UINTN Pages, EFI_PHYSICAL_ADDRESS *Memory);
+typedef EFI_STATUS (EFIAPI *EFI_FREE_PAGES)(EFI_PHYSICAL_ADDRESS Memory, UINTN Pages);
 
 typedef void (EFIAPI *EFI_COPY_MEM)(void *Destination, void *Source, UINTN Length);
 typedef void (EFIAPI *EFI_SET_MEM)(void *Buffer, UINTN Size, UINT8 Value);
+
+// EFI_ALLOCATE_TYPE values for AllocatePages().
+#define AllocateAnyPages   0
+#define AllocateMaxAddress 1
+#define AllocateAddress    2
+
+// EFI_MEMORY_TYPE values used by the loader.
+#define EfiLoaderCode 1
+#define EfiLoaderData 2
+
+typedef struct {
+    UINT32 Type;
+    UINT32 Pad;
+    EFI_PHYSICAL_ADDRESS PhysicalStart;
+    EFI_PHYSICAL_ADDRESS VirtualStart;
+    UINT64 NumberOfPages;
+    UINT64 Attribute;
+} EFI_MEMORY_DESCRIPTOR;
+
+typedef EFI_STATUS (EFIAPI *EFI_GET_MEMORY_MAP)(UINTN *MemoryMapSize,
+                                                EFI_MEMORY_DESCRIPTOR *MemoryMap,
+                                                UINTN *MapKey,
+                                                UINTN *DescriptorSize,
+                                                UINT32 *DescriptorVersion);
+typedef EFI_STATUS (EFIAPI *EFI_EXIT_BOOT_SERVICES)(EFI_HANDLE ImageHandle,
+                                                    UINTN MapKey);
 
 typedef struct {
     EFI_TABLE_HEADER Hdr;
     void *RaiseTPL;
     void *RestoreTPL;
     EFI_ALLOCATE_PAGES AllocatePages;
-    void *FreePages;
-    void *GetMemoryMap;
+    EFI_FREE_PAGES FreePages;
+    EFI_GET_MEMORY_MAP GetMemoryMap;
     EFI_ALLOCATE_POOL AllocatePool;
     EFI_FREE_POOL FreePool;
     void *CreateEvent;
@@ -256,7 +283,7 @@ typedef struct {
     void *StartImage;
     void *Exit;
     void *UnloadImage;
-    void *ExitBootServices;
+    EFI_EXIT_BOOT_SERVICES ExitBootServices;
     void *GetNextMonotonicCount;
     EFI_STATUS (EFIAPI *Stall)(UINTN Microseconds);
     void *SetWatchdogTimer;

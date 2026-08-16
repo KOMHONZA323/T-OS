@@ -1052,6 +1052,241 @@ void cmd_run(CHAR16 *filename) {
   f->Close(f);
 }
 
+// ---------------------------------------------------------------------------
+// Kernel handoff
+//
+// Everything above this point runs as a UEFI application with firmware
+// services available. cmd_kernel() loads the flat kernel image, tears the
+// firmware down and jumps into it; from that moment the T-OS kernel owns the
+// machine and its own CPU scheduler decides what runs.
+// ---------------------------------------------------------------------------
+
+#define KERNEL_LOAD_ADDR 0x1000000ULL
+// The flat image carries no .bss, but the kernel's static heap lives there.
+// Reserve well past __kernel_end (~16.1 MB today, dominated by the heap) and
+// zero the lot.
+#define KERNEL_RESERVE_BYTES (32ULL * 1024 * 1024)
+
+static void print_hex(UINT64 v) {
+  CHAR16 buf[19];
+  const CHAR16 *digits = (const CHAR16 *)L"0123456789ABCDEF";
+  buf[0] = '0';
+  buf[1] = 'x';
+  for (int i = 0; i < 16; i++)
+    buf[2 + i] = digits[(v >> ((15 - i) * 4)) & 0xF];
+  buf[18] = 0;
+  print(buf);
+}
+
+static void print_dec(UINT64 v) {
+  CHAR16 buf[21];
+  int n = 0;
+  if (v == 0)
+    buf[n++] = '0';
+  while (v && n < 20) {
+    buf[n++] = (CHAR16)('0' + (v % 10));
+    v /= 10;
+  }
+  CHAR16 out[21];
+  int m = 0;
+  while (n-- > 0)
+    out[m++] = buf[n];
+  out[m] = 0;
+  print(out);
+}
+
+void cmd_kernel(void) {
+  EFI_FILE_PROTOCOL *root = NULL;
+  get_root(&root);
+  if (!root) {
+    print((CHAR16 *)L"kernel: no filesystem root\r\n");
+    return;
+  }
+
+  EFI_FILE_PROTOCOL *f;
+  if (root->Open(root, &f, (CHAR16 *)L"kernel.bin", EFI_FILE_MODE_READ, 0) !=
+      EFI_SUCCESS) {
+    print((CHAR16 *)L"kernel: \\kernel.bin not found\r\n");
+    return;
+  }
+
+  // Size the image.
+  EFI_GUID info_guid = EFI_FILE_INFO_ID;
+  EFI_FILE_INFO *info;
+  UINTN info_size = sizeof(EFI_FILE_INFO) + 256;
+  ST->BootServices->AllocatePool(EfiLoaderData, info_size, (void **)&info);
+  if (f->GetInfo(f, &info_guid, &info_size, info) != EFI_SUCCESS) {
+    print((CHAR16 *)L"kernel: GetInfo failed\r\n");
+    ST->BootServices->FreePool(info);
+    f->Close(f);
+    return;
+  }
+  UINTN image_size = (UINTN)info->FileSize;
+  ST->BootServices->FreePool(info);
+
+  if (image_size == 0 || image_size > KERNEL_RESERVE_BYTES) {
+    print((CHAR16 *)L"kernel: implausible image size\r\n");
+    f->Close(f);
+    return;
+  }
+
+  print((CHAR16 *)L"kernel: loading ");
+  print_dec(image_size);
+  print((CHAR16 *)L" bytes for ");
+  print_hex(KERNEL_LOAD_ADDR);
+  print((CHAR16 *)L"\r\n");
+
+  // Stage the image somewhere the firmware is happy to give us, and only move
+  // it to the kernel's link address after ExitBootServices. The load address
+  // is fixed by the linker script, and firmware may well be using that range
+  // right now (OVMF often is), so writing there while boot services are alive
+  // is not safe. UEFI allocates top-down, so the staging buffer normally lands
+  // far above the destination; retry if it happens to overlap.
+  EFI_PHYSICAL_ADDRESS staging = 0;
+  EFI_PHYSICAL_ADDRESS rejected[4];
+  UINTN rejected_count = 0;
+  UINTN image_pages = (image_size + 0xFFF) / 0x1000;
+
+  for (UINTN attempt = 0; attempt < 4; attempt++) {
+    EFI_PHYSICAL_ADDRESS candidate = 0;
+    if (ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData,
+                                        image_pages, &candidate) != EFI_SUCCESS)
+      break;
+
+    // Reject anything inside the region we are going to overwrite.
+    if (candidate + (UINT64)image_pages * 0x1000 > KERNEL_LOAD_ADDR &&
+        candidate < KERNEL_LOAD_ADDR + KERNEL_RESERVE_BYTES) {
+      if (rejected_count < 4)
+        rejected[rejected_count++] = candidate; // hold it so the next try moves
+      continue;
+    }
+    staging = candidate;
+    break;
+  }
+
+  for (UINTN i = 0; i < rejected_count; i++)
+    ST->BootServices->FreePages(rejected[i], image_pages);
+
+  if (!staging) {
+    print((CHAR16 *)L"kernel: could not stage the image\r\n");
+    f->Close(f);
+    return;
+  }
+
+  UINTN read_size = image_size;
+  if (f->Read(f, &read_size, (void *)staging) != EFI_SUCCESS ||
+      read_size != image_size) {
+    print((CHAR16 *)L"kernel: read failed\r\n");
+    f->Close(f);
+    return;
+  }
+  f->Close(f);
+
+  // Reserving the destination is best-effort: if the firmware says no, the
+  // range is firmware-owned memory that becomes ours the moment boot services
+  // go away, which is exactly when we write to it.
+  EFI_PHYSICAL_ADDRESS dest = KERNEL_LOAD_ADDR;
+  UINTN dest_pages = (KERNEL_RESERVE_BYTES + 0xFFF) / 0x1000;
+  EFI_STATUS st = ST->BootServices->AllocatePages(AllocateAddress, EfiLoaderData,
+                                                  dest_pages, &dest);
+  if (st != EFI_SUCCESS) {
+    print((CHAR16 *)L"kernel: load range still firmware-owned (status ");
+    print_hex(st);
+    print((CHAR16 *)L"), claiming it after exit\r\n");
+    dest = KERNEL_LOAD_ADDR;
+  }
+
+  // Refresh the framebuffer description; it is the only thing the kernel gets
+  // from us, and the console may have changed mode since efi_main ran.
+  EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL *gop = NULL;
+  if (ST->BootServices->LocateProtocol(&gop_guid, NULL, (void **)&gop) ==
+          EFI_SUCCESS &&
+      gop && gop->Mode && gop->Mode->Info) {
+    global_boot_info.fb_base = gop->Mode->FrameBufferBase;
+    global_boot_info.fb_size = gop->Mode->FrameBufferSize;
+    global_boot_info.fb_width = gop->Mode->Info->HorizontalResolution;
+    global_boot_info.fb_height = gop->Mode->Info->VerticalResolution;
+    global_boot_info.fb_pitch = gop->Mode->Info->PixelsPerScanLine;
+    if (global_boot_info.fb_pitch == 0)
+      global_boot_info.fb_pitch = global_boot_info.fb_width;
+  }
+
+  if (global_boot_info.fb_base == 0) {
+    print((CHAR16 *)L"kernel: no framebuffer, refusing to hand over\r\n");
+    return;
+  }
+
+  print((CHAR16 *)L"kernel: exiting boot services\r\n");
+
+  // ExitBootServices needs the key from a *current* memory map, and fetching
+  // the map can itself change it. Retry a few times before giving up.
+  UINTN map_size = 0, map_key = 0, desc_size = 0;
+  UINT32 desc_version = 0;
+  EFI_MEMORY_DESCRIPTOR *map = NULL;
+  int exited = 0;
+
+  for (int attempt = 0; attempt < 8 && !exited; attempt++) {
+    map_size = 0;
+    ST->BootServices->GetMemoryMap(&map_size, NULL, &map_key, &desc_size,
+                                   &desc_version);
+    map_size += 8 * desc_size; // headroom for the allocation we are about to do
+    if (ST->BootServices->AllocatePool(EfiLoaderData, map_size, (void **)&map) !=
+        EFI_SUCCESS)
+      break;
+
+    if (ST->BootServices->GetMemoryMap(&map_size, map, &map_key, &desc_size,
+                                       &desc_version) == EFI_SUCCESS &&
+        ST->BootServices->ExitBootServices(ImgHandle, map_key) == EFI_SUCCESS) {
+      exited = 1;
+      break;
+    }
+    ST->BootServices->FreePool(map);
+    map = NULL;
+  }
+
+  if (!exited) {
+    print((CHAR16 *)L"kernel: ExitBootServices failed, staying in the shell\r\n");
+    return;
+  }
+
+  // No firmware services from here on - not even ConOut. All memory is ours,
+  // so the kernel's load range can finally be zeroed and filled in.
+  __asm__ volatile("cli");
+
+  volatile unsigned char *d = (volatile unsigned char *)(UINTN)dest;
+  for (UINT64 i = 0; i < KERNEL_RESERVE_BYTES; i++)
+    d[i] = 0; // clears .bss, which the flat image does not carry
+
+  const volatile unsigned char *s = (const volatile unsigned char *)(UINTN)staging;
+  for (UINT64 i = 0; i < image_size; i++)
+    d[i] = s[i];
+
+  void (*kernel_entry)(BootInfo *) = (void (*)(BootInfo *))(UINTN)dest;
+  kernel_entry(&global_boot_info);
+
+  // The kernel does not return.
+  for (;;)
+    __asm__ volatile("hlt");
+}
+
+// Give the user a few seconds to drop into the shell before the kernel takes
+// over. Returns non-zero if a key was pressed.
+static int boot_countdown(int seconds) {
+  for (int i = seconds; i > 0; i--) {
+    print((CHAR16 *)L"Booting the T-OS kernel in ");
+    print_dec((UINT64)i);
+    print((CHAR16 *)L"s - press any key for the shell\r\n");
+    for (int j = 0; j < 10; j++) {
+      EFI_INPUT_KEY k;
+      if (ST->ConIn->ReadKeyStroke(ST->ConIn, &k) == EFI_SUCCESS)
+        return 1;
+      ST->BootServices->Stall(100000); // 100 ms
+    }
+  }
+  return 0;
+}
+
 void cmd_about() {
   print((CHAR16 *)L"  _______      ____   _____ \r\n");
   print((CHAR16 *)L" |__   __|    / __ \\ / ____|\r\n");
@@ -1169,7 +1404,7 @@ void execute_command(CHAR16 *cmd) {
 
   if (strcmp16(cmd, (CHAR16 *)L"help") == 0)
     print((CHAR16 *)L"ls, cd, mkdir, tgo, tgc, run, asm, pstree, about, "
-                    L"shutdown, panic, startgui\r\n");
+                    L"shutdown, panic, startgui, kernel\r\n");
   else if (strcmp16(cmd, (CHAR16 *)L"about") == 0)
     cmd_about();
   else if (strcmp16(cmd, (CHAR16 *)L"ls") == 0)
@@ -1194,6 +1429,8 @@ void execute_command(CHAR16 *cmd) {
     cmd_panic();
   else if (strcmp16(cmd, (CHAR16 *)L"startgui") == 0)
     cmd_startgui();
+  else if (strcmp16(cmd, (CHAR16 *)L"kernel") == 0)
+    cmd_kernel();
   else
     print((CHAR16 *)L"Unknown command.\r\n");
   if (p)
@@ -1253,6 +1490,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle,
   ST->ConOut->ClearScreen(ST->ConOut);
   ST->ConOut->EnableCursor(ST->ConOut, TRUE);
   cmd_about();
+
+  // Hand the machine to the kernel unless someone wants the UEFI shell. On a
+  // headless VM nobody presses a key, so this is the path a plain boot takes.
+  if (!boot_countdown(3))
+    cmd_kernel(); // does not return once the kernel starts
+
   print((CHAR16 *)L"Welcome to T-OS! Type 'help' for commands.\r\n");
   CHAR16 b[256];
   UINTN l = 0;

@@ -1,4 +1,6 @@
-.section .text
+# .text.boot is placed first by kernel.ld so that _start sits at the very
+# start of the flat kernel image, which is where the bootloader jumps.
+.section .text.boot
 .global _start
 .extern kmain
 
@@ -111,3 +113,5 @@ irq12_isr:
     popq %rax
 
     iretq
+
+.section .note.GNU-stack,"",@progbits

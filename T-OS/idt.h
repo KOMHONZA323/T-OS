@@ -18,7 +18,22 @@ typedef struct {
     uint64_t base;
 } __attribute__((packed)) idtr_t;
 
+// Register layout handed to exception_handler() by the stubs in exceptions.s.
+// Field order matches the push order there; do not reorder one without the
+// other.
+typedef struct {
+    uint64_t rax, rbx, rcx, rdx, rsi, rdi, rbp;
+    uint64_t r8, r9, r10, r11, r12, r13, r14, r15;
+    uint64_t vector, error_code;
+    uint64_t rip, cs, rflags, rsp, ss;
+} __attribute__((packed)) exception_frame_t;
+
 void idt_set_descriptor(uint8_t vector, void* isr, uint8_t flags);
 void idt_init();
+
+// Point vectors 0-31 at the fault reporter. Call after idt_init().
+void idt_install_exceptions(void);
+
+void exception_handler(exception_frame_t* f);
 
 #endif

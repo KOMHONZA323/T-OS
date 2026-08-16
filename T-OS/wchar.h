@@ -5,7 +5,7 @@
 #include "stdarg.h"
 #include "stdio.h"
 
-typedef int wchar_t;
+// wchar_t comes from stddef.h so every T-OS header agrees on its width.
 typedef int wint_t;
 typedef int mbstate_t;
 struct tm;

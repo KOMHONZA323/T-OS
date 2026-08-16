@@ -19,8 +19,8 @@
 typedef int sig_atomic_t;
 typedef long fpos_t;
 typedef long clock_t;
-// time_t and wchar_t, wint_t are usually defined by compiler or uefi.h
-typedef uint16_t wchar_t;
+// time_t and wint_t are usually defined by compiler or uefi.h.
+// wchar_t comes from stddef.h (16-bit, matching -fshort-wchar and CHAR16).
 typedef uint32_t wint_t;
 typedef uint64_t time_t;
 typedef int mbstate_t;

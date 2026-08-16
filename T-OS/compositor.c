@@ -110,19 +110,25 @@ void compositor_swap_buffers(void) {
     
     uint32_t* fb = (uint32_t*)g_info.fb_base;
     uint64_t dwords = (uint64_t)g_info.fb_pitch * g_info.fb_height;
-    
-    // Using REP MOVSQ for high-speed block transfer
+
+    // Using REP MOVSQ for high-speed block transfer.
+    // The source and destination operands must be locals: rep movsq advances
+    // RSI/RDI, and a "+S" constraint on double_buffer itself would write the
+    // post-copy pointer back into the global, leaving it dangling one frame
+    // past the buffer from the second swap onwards.
+    const uint32_t* src = double_buffer;
+    uint32_t* dst = fb;
     uint64_t qwords = dwords / 2;
     uint32_t rem = dwords % 2;
-    
+
     __asm__ volatile (
         "cld\n\t"
         "rep movsq\n\t"
-        : "+S"(double_buffer), "+D"(fb), "+c"(qwords)
+        : "+S"(src), "+D"(dst), "+c"(qwords)
         :
         : "memory"
     );
-    
+
     if (rem) {
         fb[dwords - 1] = double_buffer[dwords - 1];
     }
